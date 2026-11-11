@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ChangeEvent, KeyboardEvent } from 'react';
+import type { CSSProperties, ChangeEvent, KeyboardEvent } from 'react';
 import { encodeMp3FromSamples, encodeOggFromSamples } from '../lib/audioExport';
 import { createZipArchive } from '../lib/zip';
 import {
@@ -222,81 +222,82 @@ function sanitizeFileStem(value: string): string { return value.trim().replace(/
 function downloadBlob(blob: Blob, fileName: string): void { const objectUrl = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = objectUrl; link.download = fileName; link.click(); window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000); }
 function drawWaveform(canvas: HTMLCanvasElement | null, samples: Float32Array): void {
   if (!canvas) return;
-  const width = 720;
-  const height = 180;
-  canvas.width = width;
-  canvas.height = height;
+  const ratio = Math.min(2, typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1);
+  const width = Math.max(1, canvas.clientWidth || 720);
+  const height = Math.max(1, canvas.clientHeight || 180);
+  const pixelWidth = Math.round(width * ratio);
+  const pixelHeight = Math.round(height * ratio);
+  if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+    canvas.width = pixelWidth;
+    canvas.height = pixelHeight;
+  }
   const context = canvas.getContext('2d');
   if (!context) return;
+  context.setTransform(ratio, 0, 0, ratio, 0, 0);
   context.clearRect(0, 0, width, height);
 
-  const background = context.createLinearGradient(0, 0, 0, height);
-  background.addColorStop(0, '#050b2e');
-  background.addColorStop(1, '#030723');
-  context.fillStyle = background;
+  const mid = height / 2;
+
+  context.fillStyle = '#101113';
   context.fillRect(0, 0, width, height);
 
-  context.strokeStyle = 'rgba(37, 197, 249, 0.09)';
+  context.strokeStyle = 'rgba(236, 232, 222, 0.06)';
   context.lineWidth = 1;
   context.beginPath();
-  for (let x = 0; x <= width; x += 36) {
-    context.moveTo(x + 0.5, 0);
-    context.lineTo(x + 0.5, height);
+  for (let x = 0; x <= width; x += 64) {
+    context.moveTo(Math.round(x) + 0.5, 0);
+    context.lineTo(Math.round(x) + 0.5, height);
   }
-  for (let y = 0; y <= height; y += 36) {
-    context.moveTo(0, y + 0.5);
-    context.lineTo(width, y + 0.5);
+  for (let step = 1; step <= 3; step += 1) {
+    const y = Math.round((height * step) / 4) + 0.5;
+    context.moveTo(0, y);
+    context.lineTo(width, y);
   }
   context.stroke();
 
-  context.strokeStyle = 'rgba(206, 87, 193, 0.42)';
-  context.lineWidth = 1;
+  context.strokeStyle = 'rgba(236, 232, 222, 0.22)';
   context.beginPath();
-  context.moveTo(0, height / 2 + 0.5);
-  context.lineTo(width, height / 2 + 0.5);
+  context.moveTo(0, Math.round(mid) + 0.5);
+  context.lineTo(width, Math.round(mid) + 0.5);
   context.stroke();
 
   let peak = 0;
   for (let index = 0; index < samples.length; index += 1) {
-    peak = Math.max(peak, Math.abs(samples[index] ?? 0));
+    const value = Math.abs(samples[index] ?? 0);
+    if (value > peak) peak = value;
   }
-  if (peak > 0) {
-    context.save();
-    context.strokeStyle = 'rgba(206, 87, 193, 0.35)';
-    context.setLineDash([6, 6]);
-    for (const value of [peak, -peak]) {
-      context.beginPath();
-      context.moveTo(0, ((1 - value) * height) / 2);
-      context.lineTo(width, ((1 - value) * height) / 2);
-      context.stroke();
-    }
-    context.restore();
-  }
+  if (peak <= 0) return;
+
+  const gain = (height * 0.42) / peak;
 
   context.save();
-  context.strokeStyle = '#25c5f9';
-  context.lineWidth = 2;
-  context.shadowColor = 'rgba(37, 197, 249, 0.55)';
-  context.shadowBlur = 6;
+  context.strokeStyle = 'rgba(211, 64, 29, 0.5)';
+  context.setLineDash([5, 5]);
   context.beginPath();
-  const samplesPerPixel = Math.max(1, Math.floor(samples.length / width));
-  for (let x = 0; x < width; x += 1) {
-    const start = x * samplesPerPixel;
-    const end = Math.min(samples.length, start + samplesPerPixel);
-    let min = 1;
-    let max = -1;
-    for (let index = start; index < end; index += 1) {
-      const sample = samples[index] ?? 0;
-      min = Math.min(min, sample);
-      max = Math.max(max, sample);
-    }
-    const y1 = ((1 - max) * height) / 2;
-    const y2 = ((1 - min) * height) / 2;
-    if (x === 0) context.moveTo(x, y1); else context.lineTo(x, y1);
-    context.lineTo(x, y2);
-  }
+  const guideTop = Math.round(mid - height * 0.42) + 0.5;
+  const guideBottom = Math.round(mid + height * 0.42) + 0.5;
+  context.moveTo(0, guideTop);
+  context.lineTo(width, guideTop);
+  context.moveTo(0, guideBottom);
+  context.lineTo(width, guideBottom);
   context.stroke();
   context.restore();
+
+  context.fillStyle = 'rgba(236, 232, 222, 0.92)';
+  for (let x = 0; x < width; x += 1) {
+    const start = Math.floor((x / width) * samples.length);
+    const end = Math.min(samples.length, Math.max(start + 1, Math.floor(((x + 1) / width) * samples.length)));
+    let min = 0;
+    let max = 0;
+    for (let index = start; index < end; index += 1) {
+      const sample = samples[index] ?? 0;
+      if (sample < min) min = sample;
+      if (sample > max) max = sample;
+    }
+    const top = mid - max * gain;
+    const bottom = mid - min * gain;
+    context.fillRect(x, top, 1, Math.max(1, bottom - top));
+  }
 }
 
 function parseHistoryItem(value: unknown, t: Translate): SavedSfxHistoryItem | null {
@@ -352,13 +353,26 @@ async function exportHistoryArchive(format: ExportFormat, items: SavedSfxHistory
   return createZipArchive(zipEntries);
 }
 
-function SliderField(props: { label: string; hint: string; value: number; display: string; min: number; max: number; step?: number; onChange: (nextValue: number) => void }) {
+function ParamField(props: { label: string; hint: string; value: number; display: string; min: number; max: number; step?: number; onChange: (nextValue: number) => void }) {
   const { label, hint, value, display, min, max, step = 0.01, onChange } = props;
+  const fill = max > min ? ((value - min) / (max - min)) * 100 : 0;
   return (
-    <label className="slider-card">
-      <div className="slider-card__topline"><span className="slider-card__label">{label}</span><span className="slider-card__value">{display}</span></div>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} />
-      <small>{hint}</small>
+    <label className="param">
+      <span className="param__line">
+        <span className="param__label">{label}</span>
+        <span className="param__value">{display}</span>
+      </span>
+      <input
+        className="param__range"
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        style={{ '--fill': `${fill}%` } as CSSProperties}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+      <small className="param__hint">{hint}</small>
     </label>
   );
 }
@@ -369,20 +383,8 @@ function ExportMenu(props: { menuId: string; label: string; triggerText?: string
   return (
     <div className={`export-menu ${isOpen ? 'is-open' : ''}`}>
       <button className={triggerClassName} type="button" aria-haspopup="menu" aria-expanded={isOpen} aria-label={label} disabled={isExporting} onClick={() => onToggle(menuId)}>
-        {variant === 'console' ? (
-          <>
-            <span className="export-menu__copy">
-              <span className="export-menu__eyebrow">{isExporting ? t('export.encoding') : t('export.eyebrow')}</span>
-              <span className="export-menu__title">{isExporting ? t('export.exporting') : t('export.title')}</span>
-            </span>
-            <span className="export-menu__caret export-menu__caret--console" aria-hidden="true">▾</span>
-          </>
-        ) : (
-          <>
-            <span>{isExporting ? t('export.exporting') : (triggerText ?? t('export.trigger'))}</span>
-            <span className="export-menu__caret" aria-hidden="true">▾</span>
-          </>
-        )}
+        <span>{isExporting ? t('export.exporting') : variant === 'console' ? t('export.title') : (triggerText ?? t('export.trigger'))}</span>
+        <span className="export-menu__caret" aria-hidden="true">▾</span>
       </button>
       {isOpen ? (
         <div className="export-menu__list" role="menu" aria-label={t('export.menuLabel', { label })}>
@@ -425,7 +427,14 @@ export default function GameSfxGenerator() {
   const currentSnapshot = useMemo<Snapshot>(() => ({ name: createSnapshotName(activePreset, t), presetId: activePreset, params, sampleRate, bitDepth, waveform: params.waveform }), [activePreset, params, sampleRate, bitDepth, t]);
   const isFootstepMode = params.engine === 'footsteppr';
 
-  useEffect(() => { drawWaveform(waveformCanvasRef.current, rendered.samples); }, [rendered.samples]);
+  useEffect(() => {
+    const canvas = waveformCanvasRef.current;
+    drawWaveform(canvas, rendered.samples);
+    if (!canvas || typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(() => drawWaveform(canvas, rendered.samples));
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, [rendered.samples]);
   useEffect(() => { paramsRef.current = params; }, [params]);
   useEffect(() => { setSerialized(serializeSfxParams(params)); }, [params]);
   useEffect(() => { saveHistoryToStorage(history); }, [history]);
@@ -645,227 +654,253 @@ export default function GameSfxGenerator() {
   };
 
   return (
-    <section className="workbench-card" aria-label={t('app.workbenchLabel')}>
-      <div className="workbench-layout">
-        <div className="editor-column">
-          <section className="console-surface preset-rack" aria-labelledby="preset-strip-title">
-            <div className="panel-head">
-              <div><p className="section-kicker">{t('presets.kicker')}</p><h3 id="preset-strip-title">{t('presets.title')}</h3></div>
-              <span>{t('presets.description')}</span>
-            </div>
-            <div className="preset-groups" role="group" aria-label={t('presets.groupsLabel')}>
-              {PRESET_CATEGORIES.map((category) => (
-                <section className="preset-group" key={category.id} data-preset-group={category.id}>
-                  <div className="preset-group__head">
-                    <span className="preset-group__label">{t(`presetCategories.${category.id}`)}</span>
-                    <span className="preset-group__count">{category.presets.length}</span>
-                  </div>
-                  <div className="preset-strip" role="toolbar" aria-label={t(`presetCategories.${category.id}`)}>
-                    {category.presets.map((preset) => (
-                      <button
-                        key={preset}
-                        type="button"
-                        data-preset-id={preset}
-                        aria-pressed={activePreset === preset}
-                        className={`preset-button ${preset === 'mutate' ? 'preset-button--mutate' : ''} ${activePreset === preset ? 'is-active' : ''}`}
-                        onClick={() => handlePreset(preset)}
-                      >
-                        <span className="preset-button__glyph" aria-hidden="true">{t(`presets.${preset}.glyph`)}</span>
-                        <span className="preset-button__copy"><span className="preset-button__label">{t(`presets.${preset}.label`)}</span><small>{t(`presets.${preset}.detail`)}</small></span>
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              ))}
-            </div>
-          </section>
+    <section className="workbench" aria-label={t('app.workbenchLabel')}>
+      <section className={`monitor${isPlaying ? ' is-live' : ''}`} aria-labelledby="preview-title">
+        <header className="monitor__bar">
+          <h2 id="preview-title" className="monitor__title">{t('preview.title')}</h2>
+          <span className="monitor__meta">{getPreviewMeta(params, sampleRate, bitDepth, t)}</span>
+          <span className="monitor__lamp" aria-hidden="true" />
+        </header>
 
-          {isFootstepMode ? (
-            <section className="console-surface control-section is-open" aria-labelledby="footstep-controls-title">
-              <div className="control-section__toggle">
-                <div><p className="section-kicker">{t('sections.footstepKicker')}</p><h3 id="footstep-controls-title">{t('sections.footstepTitle')}</h3><span>{t('sections.footstepDescription')}</span></div>
+        <div className="monitor__scope">
+          <canvas ref={waveformCanvasRef} className="monitor__canvas" role="img" aria-label={t('preview.waveformAria')} />
+          <span className="monitor__axis monitor__axis--start" aria-hidden="true">0.00s</span>
+          <span className="monitor__axis monitor__axis--end" aria-hidden="true">{rendered.stats.durationSeconds.toFixed(2)}s</span>
+        </div>
+
+        <dl className="readout">
+          <div className="readout__cell">
+            <dt>{t('preview.stats.duration')}</dt>
+            <dd>{t('preview.durationValue', { value: rendered.stats.durationSeconds.toFixed(2) })}</dd>
+          </div>
+          <div className="readout__cell">
+            <dt>{t('preview.stats.samples')}</dt>
+            <dd>{rendered.stats.samples.toLocaleString(locale)}</dd>
+          </div>
+          <div className="readout__cell">
+            <dt>{t('preview.stats.peak')}</dt>
+            <dd>{rendered.stats.peak.toFixed(2)}</dd>
+          </div>
+          <div className="readout__cell">
+            <dt>{t('preview.stats.clipped')}</dt>
+            <dd className={rendered.stats.clippedSamples > 0 ? 'is-warn' : undefined}>{rendered.stats.clippedSamples.toLocaleString(locale)}</dd>
+          </div>
+          <div className="readout__cell">
+            <dt>{t('preview.estimatedSize')}</dt>
+            <dd>{formatBytes(rendered.stats.estimatedByteSize)}</dd>
+          </div>
+        </dl>
+
+        <div className="deck">
+          <div className="deck__group deck__group--transport">
+            <button className="btn btn--ink btn--play" type="button" aria-label={isPlaying ? t('controls.replay') : t('controls.play')} onClick={() => { void handlePlayCurrent(); }}>
+              <span className="btn__icon" aria-hidden="true">{isPlaying ? '↻' : '▶'}</span>
+              <span>{isPlaying ? t('controls.replay') : t('controls.play')}</span>
+            </button>
+            <button className="btn btn--ghost" type="button" aria-label={t('controls.saveToHistory')} onClick={saveCurrentToHistory}>{t('controls.saveToHistory')}</button>
+          </div>
+
+          <div className="deck__group deck__group--format">
+            <div className="field-inline">
+              <span className="field-inline__label">{t('preview.sampleRate')}</span>
+              <div className="segmented" role="group" aria-label={t('preview.sampleRate')}>
+                {SAMPLE_RATE_OPTIONS.map((option) => (
+                  <button key={option} className={`segmented__btn${sampleRate === option ? ' is-active' : ''}`} type="button" aria-pressed={sampleRate === option} onClick={() => setSampleRate(option)}>{formatSampleRateChip(option)}</button>
+                ))}
               </div>
-              <div>
-                <div className="slider-grid">
-                  {FOOTSTEP_CONTROL_FIELDS.map((key) => (
-                    <SliderField
-                      key={key}
-                      label={t(`fields.${key}.label`)}
-                      hint={t(`fields.${key}.hint`)}
-                      value={params[key]}
-                      display={formatPercent(params[key])}
-                      min={0}
-                      max={1}
-                      onChange={(nextValue) => updateFootstepParam(key, nextValue)}
-                    />
-                  ))}
-                </div>
+            </div>
+            <div className="field-inline">
+              <span className="field-inline__label">{t('preview.bitDepth')}</span>
+              <div className="segmented" role="group" aria-label={t('preview.bitDepth')}>
+                {BIT_DEPTH_OPTIONS.map((option) => (
+                  <button key={option} className={`segmented__btn${bitDepth === option ? ' is-active' : ''}`} type="button" aria-pressed={bitDepth === option} onClick={() => setBitDepth(option)}>{t('common.bitValue', { value: option })}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="deck__group deck__group--output">
+            <ExportMenu menuId="current" label={t('export.currentLabel')} variant="console" isOpen={openExportMenu === 'current'} isExporting={exportingMenuId === 'current'} triggerClassName="btn btn--ghost export-menu__trigger export-menu__trigger--console" onToggle={toggleExportMenu} onExport={(format) => { void runExport(format, currentSnapshot, 'current', { key: 'status.sourceCurrent' }); }} />
+          </div>
+        </div>
+
+        <p className={`status${isPlaying ? ' is-live' : ''}`} role="status">{bypassFx ? t('status.fxBypassed') : t(status.key, status.vars)}</p>
+      </section>
+
+      <section className="cue-sheet" aria-labelledby="preset-strip-title">
+        <header className="sheet-head">
+          <h2 id="preset-strip-title">{t('presets.title')}</h2>
+          <p>{t('presets.description')}</p>
+        </header>
+
+        <div className="cue-columns" role="group" aria-label={t('presets.groupsLabel')}>
+          {PRESET_CATEGORIES.map((category) => (
+            <section className="cue-column" key={category.id} data-preset-group={category.id}>
+              <header className="cue-column__head">
+                <h3>{t(`presetCategories.${category.id}`)}</h3>
+                <span>{category.presets.length}</span>
+              </header>
+              <div className="cue-list" role="toolbar" aria-label={t(`presetCategories.${category.id}`)}>
+                {category.presets.map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    data-preset-id={preset}
+                    aria-pressed={activePreset === preset}
+                    className={`cue ${preset === 'mutate' ? 'cue--mutate' : ''} ${activePreset === preset ? 'is-active' : ''}`}
+                    onClick={() => handlePreset(preset)}
+                  >
+                    <span className="cue__glyph" aria-hidden="true">{t(`presets.${preset}.glyph`)}</span>
+                    <span className="cue__text">
+                      <span className="cue__label">{t(`presets.${preset}.label`)}</span>
+                      <small>{t(`presets.${preset}.detail`)}</small>
+                    </span>
+                  </button>
+                ))}
               </div>
             </section>
-          ) : (
-            <>
-              <section className="console-surface waveform-bay" aria-labelledby="waveform-panel-title">
-                <div className="panel-head">
-                  <div><p className="section-kicker">{t('waveforms.kicker')}</p><h3 id="waveform-panel-title">{t('waveforms.title')}</h3></div>
-                  <span>{t('waveforms.description')}</span>
-                </div>
-                <div className="waveform-grid">
-                  {WAVEFORM_OPTIONS.map((option) => (
-                    <label key={option.value} className={`mode-pill ${params.waveform === option.value ? 'is-active' : ''}`}>
-                      <input type="radio" name="sfx-waveform" checked={params.waveform === option.value} aria-label={waveformLabel(t, option.value)} onChange={() => updateParam('waveform', option.value)} />
-                      <div className="mode-pill__badge" aria-hidden="true">{option.glyph}</div>
-                      <div className="mode-pill__copy"><span className="mode-pill__label">{waveformLabel(t, option.value)}</span><small>{t(`waveforms.${option.value}.detail`)}</small></div>
-                    </label>
-                  ))}
-                </div>
-              </section>
-
-              <div className="section-stack">
-                {CONTROL_SECTIONS.map((section) => {
-                  const expanded = expandedSections[section.id];
-                  return (
-                    <section key={section.id} className={`console-surface control-section ${expanded ? 'is-open' : ''}`}>
-                      <button className="control-section__toggle" type="button" aria-expanded={expanded} aria-controls={`control-section-panel-${section.id}`} onClick={() => toggleSection(section.id)}>
-                        <div><p className="section-kicker">{t('sections.kicker')}</p><h3>{t(`sections.${section.id}.title`)}</h3><span>{t(`sections.${section.id}.description`)}</span></div>
-                        <span className="control-section__state">{expanded ? t('controls.collapse') : t('controls.expand')}</span>
-                      </button>
-                      <div id={`control-section-panel-${section.id}`} hidden={!expanded}>
-                        <div className="slider-grid">
-                          {section.fields.map((field) => {
-                            const value = params[field.key];
-                            return <SliderField key={field.key} label={t(`fields.${field.key}.label`)} hint={t(`fields.${field.key}.hint`)} value={value} display={field.signed ? formatSignedPercent(value) : formatPercent(value)} min={field.min} max={field.max} step={field.step} onChange={(nextValue) => updateParam(field.key, nextValue)} />;
-                          })}
-                        </div>
-                        {section.id === 'effects' ? (
-                          <div className="fx-extras">
-                            <button type="button" className={`fx-toggle${params.fxNormalize === 1 ? ' is-active' : ''}`} aria-pressed={params.fxNormalize === 1} onClick={toggleNormalizePeak}>
-                              <span className="fx-extras__label">{t('effects.normalize.label')}</span>
-                              <small>{t('effects.normalize.hint')}</small>
-                            </button>
-                            <button type="button" className={`fx-bypass${bypassFx ? ' is-active' : ''}`} aria-pressed={bypassFx} onClick={toggleFxBypass}>
-                              <span className="fx-extras__label">{t('effects.bypass')}</span>
-                              <small>{t('effects.bypassHint')}</small>
-                            </button>
-                            <button type="button" className="fx-share" onClick={() => { void copyShareLink(); }}>
-                              <span className="fx-extras__label">{t('effects.share')}</span>
-                              <small>{t('effects.shareHint')}</small>
-                            </button>
-                          </div>
-                        ) : null}
-                      </div>
-                    </section>
-                  );
-                })}
-              </div>
-            </>
-          )}
-
+          ))}
         </div>
-        <aside className="preview-column">
-          <section className={`console-surface preview-dock ${isPlaying ? 'is-live' : ''}`} aria-labelledby="preview-title">
-            <div className="panel-head preview-dock__head">
-              <div><p className="section-kicker">{t('preview.kicker')}</p><h3 id="preview-title">{t('preview.title')}</h3></div>
-              <span className="preview-dock__meta">{getPreviewMeta(params, sampleRate, bitDepth, t)}</span>
-            </div>
-            <div className="waveform-frame"><canvas ref={waveformCanvasRef} className="waveform-canvas" role="img" aria-label={t('preview.waveformAria')} /></div>
-            <div className="stats-grid">
-              <div className="stat-card"><span>{t('preview.stats.duration')}</span><strong>{t('preview.durationValue', { value: rendered.stats.durationSeconds.toFixed(2) })}</strong></div>
-              <div className="stat-card"><span>{t('preview.stats.samples')}</span><strong>{rendered.stats.samples.toLocaleString(locale)}</strong></div>
-              <div className="stat-card"><span>{t('preview.stats.peak')}</span><strong>{rendered.stats.peak.toFixed(2)}</strong></div>
-              <div className="stat-card"><span>{t('preview.stats.clipped')}</span><strong>{rendered.stats.clippedSamples.toLocaleString(locale)}</strong></div>
-            </div>
-            <div className="preview-options">
-              <div className="inline-options">
-                <span>{t('preview.sampleRate')}</span>
-                <div className="chip-group">
-                  {SAMPLE_RATE_OPTIONS.map((option) => (
-                    <button key={option} className={`segmented-button ${sampleRate === option ? 'is-active' : ''}`} type="button" onClick={() => setSampleRate(option)}>{formatSampleRateChip(option)}</button>
-                  ))}
-                </div>
-              </div>
-              <div className="inline-options">
-                <span>{t('preview.bitDepth')}</span>
-                <div className="chip-group">
-                  {BIT_DEPTH_OPTIONS.map((option) => (
-                    <button key={option} className={`segmented-button ${bitDepth === option ? 'is-active' : ''}`} type="button" onClick={() => setBitDepth(option)}>{t('common.bitValue', { value: option })}</button>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <div className="monitor-actions">
-              <button className="primary-button play-button" type="button" aria-label={isPlaying ? t('controls.replay') : t('controls.play')} onClick={() => { void handlePlayCurrent(); }}>
-                <span className="play-button__icon" aria-hidden="true">{isPlaying ? '↻' : '▶'}</span>
-                <span className="play-button__copy"><span className="play-button__label">{isPlaying ? t('controls.replay') : t('controls.play')}</span><small>{isPlaying ? t('controls.replayHint') : t('controls.playHint')}</small></span>
-              </button>
-              <button className="secondary-button secondary-button--teal save-button" type="button" aria-label={t('controls.saveToHistory')} onClick={saveCurrentToHistory}>{t('controls.saveToHistory')}</button>
-              <div className="preview-dock__footer">
-                <div className="option-card option-card--monitor"><span>{t('preview.estimatedSize')}</span><strong>{formatBytes(rendered.stats.estimatedByteSize)}</strong></div>
-                <ExportMenu menuId="current" label={t('export.currentLabel')} variant="console" isOpen={openExportMenu === 'current'} isExporting={exportingMenuId === 'current'} triggerClassName="export-menu__trigger export-menu__trigger--console" onToggle={toggleExportMenu} onExport={(format) => { void runExport(format, currentSnapshot, 'current', { key: 'status.sourceCurrent' }); }} />
-              </div>
-            </div>
-            <div className={`status-banner ${isPlaying ? 'status-banner--live' : ''}`} role="status">{bypassFx ? t('status.fxBypassed') : t(status.key, status.vars)}</div>
-          </section>
+      </section>
 
-          <section className="console-surface history-panel" aria-labelledby="history-title">
-            <div className="panel-head history-panel__head">
-              <div><p className="section-kicker">{t('history.kicker')}</p><h3 id="history-title">{t('history.title')}</h3></div>
-              <div className="history-panel__tools">
-                <span>{history.length > 0 ? t('history.count', { count: history.length }) : t('history.hint')}</span>
-                {history.length > 0 ? (
-                  <ExportMenu menuId="history-all" label={t('export.historyAllLabel')} triggerText={t('export.all')} variant="inline" isOpen={openExportMenu === 'history-all'} isExporting={exportingMenuId === 'history-all'} triggerClassName="ghost-button export-menu__trigger export-menu__trigger--inline" onToggle={toggleExportMenu} onExport={(format) => { void runHistoryArchiveExport(format); }} />
-                ) : null}
+      <section className="params" aria-label={isFootstepMode ? t('sections.footstepTitle') : t('waveforms.title')}>
+        {isFootstepMode ? (
+          <section className="group">
+            <div className="group__toggle group__toggle--static">
+              <span className="group__title">{t('sections.footstepTitle')}</span>
+              <span className="group__hint">{t('sections.footstepDescription')}</span>
+            </div>
+            <div className="group__body">
+              <div className="param-grid">
+                {FOOTSTEP_CONTROL_FIELDS.map((key) => (
+                  <ParamField key={key} label={t(`fields.${key}.label`)} hint={t(`fields.${key}.hint`)} value={params[key]} display={formatPercent(params[key])} min={0} max={1} onChange={(nextValue) => updateFootstepParam(key, nextValue)} />
+                ))}
               </div>
             </div>
-            {history.length === 0 ? (
-              <div className="history-empty" data-testid="history-empty-state"><strong>{t('history.emptyTitle')}</strong><p>{t('history.emptyHint')}</p></div>
-            ) : (
-              <div className="history-list">
-                {history.map((item) => {
-                  const isEditing = editingHistoryId === item.id;
-                  const menuId = `history-${item.id}`;
-                  return (
-                    <article key={item.id} className="history-card">
-                      <div className="history-card__head">
-                        {isEditing ? (
-                          <input className="history-card__input" autoFocus aria-label={t('history.renameAria')} value={editingHistoryName} onChange={(event) => setEditingHistoryName(event.target.value)} onBlur={commitHistoryRename} onKeyDown={handleHistoryRenameKeyDown} />
-                        ) : (
-                          <button className="history-card__title" type="button" onClick={() => { setEditingHistoryId(item.id); setEditingHistoryName(item.name); }}>{item.name}</button>
-                        )}
-                        <button className="ghost-button history-card__rename" type="button" onClick={() => deleteHistoryItem(item)}>{t('history.delete')}</button>
-                      </div>
-                      <div className="history-card__meta">{formatHistoryDetail(item.savedAt, t)}</div>
-                      <div className="history-card__chips">
-                        <span className="history-chip">{item.presetId ? presetLabel(t, item.presetId) : t('common.custom')}</span>
-                        <span className="history-chip">{item.params.engine === 'footsteppr' ? terrainLabel(t, item.params.footstepTerrain) : waveformLabel(t, item.waveform)}</span>
-                        <span className="history-chip">{formatSampleRateMeta(item.sampleRate)}</span>
-                        <span className="history-chip">{t('common.bitValue', { value: item.bitDepth })}</span>
-                      </div>
-                      <div className="history-card__actions">
-                        <button className="ghost-button" type="button" onClick={() => applyHistoryToWorkbench(item)}>{t('history.apply')}</button>
-                        <button className="ghost-button" type="button" onClick={() => { void handlePlayHistory(item); }}>{t('history.play')}</button>
-                        <ExportMenu menuId={menuId} label={t('export.historyItemLabel', { name: item.name })} variant="inline" isOpen={openExportMenu === menuId} isExporting={exportingMenuId === menuId} triggerClassName="ghost-button export-menu__trigger export-menu__trigger--inline" onToggle={toggleExportMenu} onExport={(format) => { void runExport(format, toSnapshot(item), menuId, { key: 'status.sourceHistory', vars: { name: item.name } }); }} />
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-            )}
           </section>
+        ) : (
+          <>
+            <header className="sheet-head">
+              <h2 id="waveform-panel-title">{t('waveforms.title')}</h2>
+              <p>{t('waveforms.description')}</p>
+            </header>
 
-          <section className="console-surface advanced-editor-panel" aria-labelledby="json-panel-title">
-            <div className="panel-head">
-              <div><p className="section-kicker">{t('advanced.kicker')}</p><h3 id="json-panel-title">{t('json.title')}</h3></div>
-              <span>{t('json.description')}</span>
+            <div className="wave-picker">
+              {WAVEFORM_OPTIONS.map((option) => (
+                <label key={option.value} className={`wave-option ${params.waveform === option.value ? 'is-active' : ''}`}>
+                  <input type="radio" name="sfx-waveform" checked={params.waveform === option.value} aria-label={waveformLabel(t, option.value)} onChange={() => updateParam('waveform', option.value)} />
+                  <span className="wave-option__glyph" aria-hidden="true">{option.glyph}</span>
+                  <span className="wave-option__label">{waveformLabel(t, option.value)}</span>
+                  <small className="wave-option__hint">{t(`waveforms.${option.value}.detail`)}</small>
+                </label>
+              ))}
             </div>
-            <div className="advanced-editor">
-              <textarea id="sfx-json-editor" className="json-editor" aria-label={t('json.editorAria')} value={serialized} onChange={handleJsonChange} />
-              <div className="json-actions">
-                <button className="ghost-button" type="button" onClick={() => { void handleCopyJson(); }}>{t('json.copy')}</button>
-                <button className="ghost-button" type="button" onClick={handleApplyJson}>{t('json.apply')}</button>
-              </div>
+
+            <div className="group-stack">
+              {CONTROL_SECTIONS.map((section) => {
+                const expanded = expandedSections[section.id];
+                return (
+                  <section className="group" key={section.id}>
+                    <button className="group__toggle" type="button" aria-expanded={expanded} aria-controls={`control-section-panel-${section.id}`} onClick={() => toggleSection(section.id)}>
+                      <span className="group__title">{t(`sections.${section.id}.title`)}</span>
+                      <span className="group__hint">{t(`sections.${section.id}.description`)}</span>
+                      <span className="group__mark" aria-hidden="true">{expanded ? '−' : '+'}</span>
+                    </button>
+                    <div id={`control-section-panel-${section.id}`} className="group__body" hidden={!expanded}>
+                      <div className="param-grid">
+                        {section.fields.map((field) => {
+                          const value = params[field.key];
+                          return <ParamField key={field.key} label={t(`fields.${field.key}.label`)} hint={t(`fields.${field.key}.hint`)} value={value} display={field.signed ? formatSignedPercent(value) : formatPercent(value)} min={field.min} max={field.max} step={field.step} onChange={(nextValue) => updateParam(field.key, nextValue)} />;
+                        })}
+                      </div>
+                      {section.id === 'effects' ? (
+                        <div className="fx-row">
+                          <button type="button" className={`fx-action${params.fxNormalize === 1 ? ' is-active' : ''}`} aria-pressed={params.fxNormalize === 1} onClick={toggleNormalizePeak}>
+                            <span className="fx-action__mark" aria-hidden="true" />
+                            <span className="fx-action__text"><span className="fx-action__label">{t('effects.normalize.label')}</span><small>{t('effects.normalize.hint')}</small></span>
+                          </button>
+                          <button type="button" className={`fx-action${bypassFx ? ' is-active' : ''}`} aria-pressed={bypassFx} onClick={toggleFxBypass}>
+                            <span className="fx-action__mark" aria-hidden="true" />
+                            <span className="fx-action__text"><span className="fx-action__label">{t('effects.bypass')}</span><small>{t('effects.bypassHint')}</small></span>
+                          </button>
+                          <button type="button" className="fx-action fx-action--action" onClick={() => { void copyShareLink(); }}>
+                            <span className="fx-action__mark" aria-hidden="true" />
+                            <span className="fx-action__text"><span className="fx-action__label">{t('effects.share')}</span><small>{t('effects.shareHint')}</small></span>
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  </section>
+                );
+              })}
             </div>
-          </section>
-        </aside>
+          </>
+        )}
+      </section>
+
+      <div className="lower">
+        <section className="takes" aria-labelledby="history-title">
+          <header className="sheet-head sheet-head--row">
+            <div>
+              <h2 id="history-title">{t('history.title')}</h2>
+              <p>{history.length > 0 ? t('history.count', { count: history.length }) : t('history.hint')}</p>
+            </div>
+            {history.length > 0 ? (
+              <ExportMenu menuId="history-all" label={t('export.historyAllLabel')} triggerText={t('export.all')} variant="inline" isOpen={openExportMenu === 'history-all'} isExporting={exportingMenuId === 'history-all'} triggerClassName="btn btn--quiet btn--sm export-menu__trigger export-menu__trigger--inline" onToggle={toggleExportMenu} onExport={(format) => { void runHistoryArchiveExport(format); }} />
+            ) : null}
+          </header>
+
+          {history.length === 0 ? (
+            <div className="takes__empty" data-testid="history-empty-state">
+              <strong>{t('history.emptyTitle')}</strong>
+              <p>{t('history.emptyHint')}</p>
+            </div>
+          ) : (
+            <ol className="takes__list">
+              {history.map((item, index) => {
+                const isEditing = editingHistoryId === item.id;
+                const menuId = `history-${item.id}`;
+                return (
+                  <li className="take" key={item.id}>
+                    <span className="take__index" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
+                    <div className="take__id">
+                      {isEditing ? (
+                        <input className="take__input" autoFocus aria-label={t('history.renameAria')} value={editingHistoryName} onChange={(event) => setEditingHistoryName(event.target.value)} onBlur={commitHistoryRename} onKeyDown={handleHistoryRenameKeyDown} />
+                      ) : (
+                        <button className="take__name" type="button" onClick={() => { setEditingHistoryId(item.id); setEditingHistoryName(item.name); }}>{item.name}</button>
+                      )}
+                      <span className="take__time">{formatHistoryDetail(item.savedAt, t)}</span>
+                    </div>
+                    <div className="take__tags">
+                      <span className="take__tag">{item.presetId ? presetLabel(t, item.presetId) : t('common.custom')}</span>
+                      <span className="take__tag">{item.params.engine === 'footsteppr' ? terrainLabel(t, item.params.footstepTerrain) : waveformLabel(t, item.waveform)}</span>
+                      <span className="take__tag">{formatSampleRateMeta(item.sampleRate)}</span>
+                      <span className="take__tag">{t('common.bitValue', { value: item.bitDepth })}</span>
+                    </div>
+                    <div className="take__actions">
+                      <button className="btn btn--quiet btn--sm" type="button" onClick={() => applyHistoryToWorkbench(item)}>{t('history.apply')}</button>
+                      <button className="btn btn--quiet btn--sm" type="button" onClick={() => { void handlePlayHistory(item); }}>{t('history.play')}</button>
+                      <ExportMenu menuId={menuId} label={t('export.historyItemLabel', { name: item.name })} variant="inline" isOpen={openExportMenu === menuId} isExporting={exportingMenuId === menuId} triggerClassName="btn btn--quiet btn--sm export-menu__trigger export-menu__trigger--inline" onToggle={toggleExportMenu} onExport={(format) => { void runExport(format, toSnapshot(item), menuId, { key: 'status.sourceHistory', vars: { name: item.name } }); }} />
+                      <button className="btn btn--quiet btn--sm" type="button" onClick={() => deleteHistoryItem(item)}>{t('history.delete')}</button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </section>
+
+        <section className="json-panel" aria-labelledby="json-panel-title">
+          <header className="sheet-head">
+            <h2 id="json-panel-title">{t('json.title')}</h2>
+            <p>{t('json.description')}</p>
+          </header>
+          <textarea id="sfx-json-editor" className="json-panel__editor" aria-label={t('json.editorAria')} value={serialized} onChange={handleJsonChange} />
+          <div className="json-panel__actions">
+            <button className="btn btn--quiet btn--sm" type="button" onClick={() => { void handleCopyJson(); }}>{t('json.copy')}</button>
+            <button className="btn btn--ghost btn--sm" type="button" onClick={handleApplyJson}>{t('json.apply')}</button>
+          </div>
+        </section>
       </div>
     </section>
   );

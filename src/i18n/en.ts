@@ -314,7 +314,7 @@ export const en = {
 
   'footer.creditPrefix': 'Sound engine and original tool:',
   'footer.creditSuffix': 'rebuilt for AFCT teaching.',
-  'footer.note': 'Free and open source under GPL-3.0.',
+  'footer.note': 'All processing happens in your browser.',
 
   'common.custom': 'Custom',
   'common.bitValue': '{value} bit',

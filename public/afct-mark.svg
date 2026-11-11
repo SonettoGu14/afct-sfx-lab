@@ -1,31 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="AFCT SFX Lab mark">
   <title>AFCT SFX Lab</title>
-  <rect width="64" height="64" rx="14" fill="#010544"/>
-  <rect x="3.5" y="3.5" width="57" height="57" rx="11" fill="none" stroke="#25c5f9" stroke-opacity="0.32" stroke-width="1.2"/>
-
-  <!-- film-strip perforations -->
-  <g fill="#ce57c1" fill-opacity="0.82">
-    <rect x="7.5" y="13" width="4" height="4" rx="1.2"/>
-    <rect x="7.5" y="23" width="4" height="4" rx="1.2"/>
-    <rect x="7.5" y="33" width="4" height="4" rx="1.2"/>
-    <rect x="7.5" y="43" width="4" height="4" rx="1.2"/>
-    <rect x="52.5" y="13" width="4" height="4" rx="1.2"/>
-    <rect x="52.5" y="23" width="4" height="4" rx="1.2"/>
-    <rect x="52.5" y="33" width="4" height="4" rx="1.2"/>
-    <rect x="52.5" y="43" width="4" height="4" rx="1.2"/>
+  <rect width="64" height="64" rx="2" fill="#17181a"/>
+  <g fill="#f2f0ea" stroke="#17181a" stroke-width="1" stroke-linejoin="round">
+    <path d="M32 32 L32 13 L48.64 22.5 Z" fill-opacity="1"/>
+    <path d="M32 32 L48.64 22.5 L48.64 41.5 Z" fill-opacity="0.55"/>
+    <path d="M32 32 L48.64 41.5 L32 51 Z" fill-opacity="1"/>
+    <path d="M32 32 L32 51 L15.36 41.5 Z" fill-opacity="0.55"/>
+    <path d="M32 32 L15.36 41.5 L15.36 22.5 Z" fill-opacity="1"/>
+    <path d="M32 32 L15.36 22.5 L32 13 Z" fill-opacity="0.55"/>
   </g>
-
-  <!-- six-blade aperture / iris -->
-  <g stroke="#010544" stroke-width="1" stroke-linejoin="round">
-    <path d="M32 32 L32 14 L47.59 23 Z" fill="#25c5f9"/>
-    <path d="M32 32 L47.59 23 L47.59 41 Z" fill="#ce57c1"/>
-    <path d="M32 32 L47.59 41 L32 50 Z" fill="#25c5f9"/>
-    <path d="M32 32 L32 50 L16.41 41 Z" fill="#ce57c1"/>
-    <path d="M32 32 L16.41 41 L16.41 23 Z" fill="#25c5f9"/>
-    <path d="M32 32 L16.41 23 L32 14 Z" fill="#ce57c1"/>
-  </g>
-
-  <!-- iris opening -->
-  <circle cx="32" cy="32" r="7" fill="#030723" stroke="#25c5f9" stroke-width="1.4"/>
-  <circle cx="32" cy="32" r="1.6" fill="#f2f2f9" fill-opacity="0.9"/>
+  <circle cx="32" cy="32" r="7.5" fill="#17181a"/>
+  <circle cx="32" cy="32" r="1.8" fill="#f2f0ea"/>
 </svg>

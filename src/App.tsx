@@ -8,61 +8,54 @@ function App() {
   const { language, setLanguage, t } = useI18n();
 
   return (
-    <div className="page-shell">
-      <div className="ambient ambient-a" />
-      <div className="ambient ambient-b" />
-
-      <main className="app-shell">
-        <header className="hero">
-          <div className="hero-top">
-            <div className="hero-brand">
-              <img className="hero-brand__mark" src={MARK_ASSET_PATH} alt="" />
-              <div className="hero-brand__text">
-                <p className="hero-brand__eyebrow">{t('hero.department')}</p>
-                <h1 className="hero-brand__title">AFCT SFX Lab</h1>
-                <p className="hero-brand__sub">{t('hero.subtitle')}</p>
-              </div>
-            </div>
-
-            <div className="lang-switch" role="group" aria-label={t('lang.label')}>
-              <button
-                type="button"
-                className={language === 'en' ? 'lang-switch__btn is-active' : 'lang-switch__btn'}
-                aria-pressed={language === 'en'}
-                onClick={() => setLanguage('en')}
-              >
-                EN
-              </button>
-              <button
-                type="button"
-                className={language === 'zh' ? 'lang-switch__btn is-active' : 'lang-switch__btn'}
-                aria-pressed={language === 'zh'}
-                onClick={() => setLanguage('zh')}
-              >
-                中文
-              </button>
+    <div className="page">
+      <header className="masthead">
+        <div className="masthead__row">
+          <div className="masthead__brand">
+            <img className="masthead__mark" src={MARK_ASSET_PATH} alt="" width={34} height={34} />
+            <div className="masthead__text">
+              <h1 className="masthead__title">AFCT SFX Lab</h1>
+              <p className="masthead__dept">{t('hero.department')}</p>
             </div>
           </div>
-        </header>
 
-        <GameSfxGenerator />
-
-        <footer className="app-footer">
-          <p className="app-footer__credit">
-            {t('footer.creditPrefix')}{' '}
-            <a
-              className="app-footer__credit-link"
-              href={SOURCE_REPO_URL}
-              target="_blank"
-              rel="noreferrer"
+          <div className="lang-switch" role="group" aria-label={t('lang.label')}>
+            <button
+              type="button"
+              className={language === 'en' ? 'lang-switch__btn is-active' : 'lang-switch__btn'}
+              aria-pressed={language === 'en'}
+              onClick={() => setLanguage('en')}
             >
-              game-sfx-generator-web
-            </a>{' '}
-            · GPL-3.0 · {t('footer.creditSuffix')}
-          </p>
-          <p className="app-footer__note">{t('footer.note')}</p>
-        </footer>
+              EN
+            </button>
+            <button
+              type="button"
+              className={language === 'zh' ? 'lang-switch__btn is-active' : 'lang-switch__btn'}
+              aria-pressed={language === 'zh'}
+              onClick={() => setLanguage('zh')}
+            >
+              中文
+            </button>
+          </div>
+        </div>
+
+        <p className="masthead__lead">{t('hero.subtitle')}</p>
+      </header>
+
+      <main className="page__main">
+        <GameSfxGenerator />
       </main>
+
+      <footer className="colophon">
+        <p className="colophon__credit">
+          {t('footer.creditPrefix')}{' '}
+          <a className="colophon__link" href={SOURCE_REPO_URL} target="_blank" rel="noreferrer">
+            game-sfx-generator-web
+          </a>{' '}
+          · GPL-3.0 · {t('footer.creditSuffix')}
+        </p>
+        <p className="colophon__note">{t('footer.note')}</p>
+      </footer>
     </div>
   );
 }

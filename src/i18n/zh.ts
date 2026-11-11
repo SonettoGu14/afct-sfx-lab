@@ -316,7 +316,7 @@ export const zh: Record<TranslationKey, string> = {
 
   'footer.creditPrefix': '音效引擎与原始工具：',
   'footer.creditSuffix': '为 AFCT 教学重建。',
-  'footer.note': '基于 GPL-3.0 免费开源。',
+  'footer.note': '所有处理都在浏览器内完成。',
 
   'common.custom': '自定义',
   'common.bitValue': '{value} bit',
