@@ -18,7 +18,7 @@ Sketch, mutate and export retro/procedural sound effects without leaving the bro
 - **Export** — WAV, MP3, OGG and JSON parameter snapshots; batch-export the whole history as a ZIP in any format.
 - **Local history** — save, apply, play, rename, export and delete snapshots (persisted in `localStorage`).
 - **Bilingual** — English and 中文, switchable in the header; the choice is remembered. English is the default.
-- **Dark cinema-tech theme** — XJTLU/AFCT brand palette (navy `#010544`, magenta `#ce57c1`, cyan `#25c5f9`).
+- **Paper-lab interface** — one light sheet with hairline rules, a dark instrument monitor, a single signal-red accent, and self-hosted Archivo + IBM Plex Mono.
 
 ## Presets
 
@@ -81,8 +81,8 @@ src/
     zip.ts               # dependency-free ZIP writer for batch export
   components/
     GameSfxGenerator.tsx # workbench UI, preview, history, JSON panel
-  App.tsx                # AFCT shell: hero, language switch, footer
-  styles.css             # dark cinema-tech theme
+  App.tsx                # shell: masthead, language switch, colophon
+  styles.css             # paper-lab visual system
 docs/
   spec-afct-web.md       # design/preset/i18n contract used for this rebuild
 ```

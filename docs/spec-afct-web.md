@@ -1,3 +1,6 @@
+> Historical note: sections 4 and 5 record the first (dark cinema-tech) pass.
+> The current visual system is a light paper-lab sheet described in README.md.
+
 # AFCT SFX Lab — Web Rebuild Spec (single source of truth)
 
 Repo: `game-sfx-generator-web` (working tree = new project `afct-sfx-lab`).
