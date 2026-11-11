@@ -115,6 +115,8 @@ function withRandomSource<T>(seed: number | undefined, fn: () => T): T {
 export type SfxRenderOptions = {
   sampleRate: SfxSampleRate;
   bitDepth: SfxBitDepth;
+  /** Same params + same seed produce the same noise sequence. */
+  seed?: number;
 };
 
 export type SfxRenderStats = {
@@ -888,12 +890,14 @@ export function renderSfx(
   params: SfxParams,
   options: SfxRenderOptions,
 ): SfxRenderResult {
-  const safeParams = clampSfxParams(params);
-  const baseSamples = safeParams.engine === 'footsteppr'
-    ? renderFootstepprSamples(safeParams, options)
-    : renderSfxrSamples(safeParams, options);
+  return withRandomSource(options.seed, () => {
+    const safeParams = clampSfxParams(params);
+    const baseSamples = safeParams.engine === 'footsteppr'
+      ? renderFootstepprSamples(safeParams, options)
+      : renderSfxrSamples(safeParams, options);
 
-  return finalizeSfx(baseSamples, safeParams, options);
+    return finalizeSfx(baseSamples, safeParams, options);
+  });
 }
 
 function finalizeSfx(
