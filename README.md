@@ -2,7 +2,7 @@
 
 **A browser-based sound-design workbench built for the Academy of Film and Creative Technology (AFCT), Xi'an Jiaotong-Liverpool University.**
 
-Sketch, mutate and export retro/procedural sound effects without leaving the browser: 28 presets, two synthesis engines, eight footstep terrains, a full parameter console, a 10-knob FX rack and four export formats. Everything renders locally — no audio ever leaves the page.
+Sketch, mutate and export retro/procedural sound effects without leaving the browser: 28 presets, two synthesis engines, eight footstep terrains, a full parameter console, a 10-knob FX rack, four export formats and a game-ready package export. Everything renders locally — no audio ever leaves the page.
 
 - Live: <https://sonettogu14.github.io/afct-sfx-lab/>
 - Based on: [mowangblog/game-sfx-generator-web](https://github.com/mowangblog/game-sfx-generator-web) (GPL-3.0)
@@ -13,9 +13,10 @@ Sketch, mutate and export retro/procedural sound effects without leaving the bro
 - **Two engines** — an `sfxr`-style parameter synthesizer and a `footsteppr` footstep engine with 8 distinct terrains (snow, grass, dirt, gravel, mud, wood, metal, water).
 - **Full parameter console** — envelope, frequency, modulation, texture and filter sections, plus 4 waveforms, duty cycle, phaser, low/high-pass sweeps and master volume.
 - **FX rack** — drive, bitcrush, tone tilt, feedback echo and a small Schroeder reverb, with peak normalization, one-click A/B bypass and shareable `#s=` permalinks that restore exact settings.
-- **Live preview** — waveform canvas, peak/clipping stats, duration and byte size; sample rate 8k–44.1k, 8/16-bit.
+- **Live preview** — waveform canvas, peak/clipping stats, duration and byte size; sample rate 8k–48k, 8/16-bit.
 - **Auto-preview** — regenerates and plays ~140 ms after the last tweak, so you can hear while you drag.
 - **Export** — WAV, MP3, OGG and JSON parameter snapshots; batch-export the whole history as a ZIP in any format.
+- **Game export** — optional silence trim and peak target, category folders, configurable name prefix, `manifest.json`, and five seeded variants per take.
 - **Local history** — save, apply, play, rename, export and delete snapshots (persisted in `localStorage`).
 - **Bilingual** — English and 中文, switchable in the header; the choice is remembered. English is the default.
 - **Paper-lab interface** — one light sheet with hairline rules, a dark instrument monitor, a single signal-red accent, and self-hosted Archivo + IBM Plex Mono.
@@ -49,6 +50,35 @@ The chain is fixed: drive → bitcrush → tone → delay → reverb → peak ce
 
 - **Bypass FX** auditions the dry engine output without touching your settings or exports.
 - **Copy share link** encodes `{ version, params, sampleRate, bitDepth }` as base64url in the URL hash; opening the link restores the exact patch, FX included.
+
+## Game engine export (v1.2)
+
+Every audio export runs through an optional mastering step, and the history can be packaged as a folder a game project can import as-is.
+
+| Control | What it does |
+| --- | --- |
+| Trim silence | Cuts leading/trailing silence, keeping a 5 ms pre-roll and a 20 ms tail so transients survive. |
+| Peak | Scales the whole clip so its loudest sample sits at -3, -6 or -12 dBFS. Off by default. |
+| Prefix | Prepended to every exported file name, e.g. `ui_`. |
+
+**Game package** (history header) writes a ZIP:
+
+```
+sfx/ui/01-Click.wav
+sfx/footstep/01-Snow-Step.wav
+manifest.json
+```
+
+`manifest.json` records the schema version, generator, export time and, for every sound: file path, display name, category, preset id, sample rate, bit depth, duration, peak dBFS, seed and the full parameter set. Re-rendering a manifest entry with the same parameters reproduces the sound exactly.
+
+**Five variants** (per-take export menu) re-rolls a saved take with five consecutive seeds and packs the results with a manifest, so one designed sound can become a small family of variations for a level.
+
+### Importing into Unity
+
+1. Unzip a game package and drop the `sfx/` folder into `Assets/Audio`.
+2. For short effects use: **Force To Mono** on, **Load Type** `Decompress On Load`, **Preload Audio Data** on, **Compression Format** `PCM` for 16-bit sources (or `ADPCM` if size matters more than fidelity).
+3. Keep 44.1 kHz for effects; use 48 kHz when mixing against linear media or when the project's audio setting is 48 kHz.
+4. Godot: import as WAV, loop off for one-shots, and rely on the same manifest to script `AudioStreamPlayer` wiring.
 
 ## Getting started
 

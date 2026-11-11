@@ -3,6 +3,7 @@ import {
   DEFAULT_SFX_PARAMS,
   SFX_PRESET_ORDER,
   createSfxPreset,
+  createSfxVariant,
   deserializeSfxParams,
   encodeSfxWav,
   renderSfx,
@@ -267,6 +268,57 @@ describe('fx integration', () => {
     expect(rendered.stats.samples).toBeGreaterThan(
       Math.round(rendered.stats.durationSeconds * 0) + 22050 * 0.8,
     );
+  });
+});
+
+describe('seeded generation', () => {
+  it('reproduces a preset for the same seed', () => {
+    const first = createSfxPreset('pickupCoin', DEFAULT_SFX_PARAMS, { seed: 42 });
+    const second = createSfxPreset('pickupCoin', DEFAULT_SFX_PARAMS, { seed: 42 });
+
+    expect(first).toEqual(second);
+  });
+
+  it('gives a different take for a different seed', () => {
+    const first = createSfxPreset('pickupCoin', DEFAULT_SFX_PARAMS, { seed: 1 });
+    const second = createSfxPreset('pickupCoin', DEFAULT_SFX_PARAMS, { seed: 2 });
+
+    expect(first).not.toEqual(second);
+  });
+
+  it('builds reproducible variants of a saved take', () => {
+    const take = createSfxPreset('laserShoot', DEFAULT_SFX_PARAMS, { seed: 7 });
+    const first = createSfxVariant(take, 'laserShoot', 11);
+    const second = createSfxVariant(take, 'laserShoot', 11);
+    const other = createSfxVariant(take, 'laserShoot', 12);
+
+    expect(first).toEqual(second);
+    expect(first).not.toEqual(other);
+  });
+
+  it('variants stay inside the parameter bounds', () => {
+    const take = createSfxPreset('explosion', DEFAULT_SFX_PARAMS, { seed: 3 });
+    for (let seed = 0; seed < 5; seed += 1) {
+      const variant = createSfxVariant(take, 'explosion', seed);
+      for (const value of Object.values(variant)) {
+        if (typeof value === 'number') {
+          expect(Number.isFinite(value)).toBe(true);
+          expect(value).toBeGreaterThanOrEqual(-1);
+          expect(value).toBeLessThanOrEqual(1);
+        }
+      }
+    }
+  });
+
+  it('renders and encodes at 48 kHz', async () => {
+    const rendered = renderSfx(DEFAULT_SFX_PARAMS, { sampleRate: 48000, bitDepth: 16 });
+    expect(rendered.stats.samples / 48000).toBeCloseTo(rendered.stats.durationSeconds, 6);
+
+    const buffer = await readBlobAsArrayBuffer(
+      encodeSfxWav(rendered.samples, 48000, 16),
+    );
+    const view = new DataView(buffer);
+    expect(view.getUint32(24, true)).toBe(48000);
   });
 });
 

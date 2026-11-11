@@ -375,6 +375,22 @@ describe('language switching', () => {
     expect(screen.getByRole('button', { name: '中文' }).getAttribute('aria-pressed')).toBe('true');
   });
 
+  it('persists the game export settings', async () => {
+    const user = userEvent.setup();
+    renderWorkbench();
+
+    expect(screen.getByText('Game export')).not.toBeNull();
+
+    await user.click(screen.getByLabelText('Trim silence'));
+    expect(JSON.parse(localStorage.getItem('afct-sfx-lab:export-v1') ?? '{}').trimSilence).toBe(true);
+
+    await user.selectOptions(screen.getByLabelText('Peak'), '-6');
+    expect(JSON.parse(localStorage.getItem('afct-sfx-lab:export-v1') ?? '{}').targetPeakDb).toBe(-6);
+
+    await user.type(screen.getByLabelText('Prefix'), 'ui_');
+    expect(JSON.parse(localStorage.getItem('afct-sfx-lab:export-v1') ?? '{}').namePrefix).toBe('ui_');
+  });
+
   it('keeps the Chinese locale after a reload', async () => {
     const user = userEvent.setup();
     renderApp();

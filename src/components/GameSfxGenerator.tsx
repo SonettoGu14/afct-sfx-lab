@@ -3,9 +3,18 @@ import type { CSSProperties, ChangeEvent, KeyboardEvent } from 'react';
 import { encodeMp3FromSamples, encodeOggFromSamples } from '../lib/audioExport';
 import { createZipArchive } from '../lib/zip';
 import {
+  DEFAULT_EXPORT_SETTINGS,
+  buildGamePackage,
+  type GameExportRequest,
+  type SfxExportSettings,
+} from '../lib/gameExport';
+import { masterForExport } from '../lib/mastering';
+import { randomSeed } from '../lib/prng';
+import {
   DEFAULT_SFX_PARAMS,
   clampSfxParams,
   createSfxPreset,
+  createSfxVariant,
   deserializeSfxParams,
   encodeSfxWav,
   renderSfx,
@@ -20,7 +29,7 @@ import { PRESET_CATEGORIES, isFootstepPresetId, isPresetId } from '../lib/preset
 import { useI18n, type Translate, type TranslationKey } from '../i18n';
 
 const HISTORY_STORAGE_KEY = 'afct-sfx-lab:history-v1';
-const SAMPLE_RATE_OPTIONS: SfxSampleRate[] = [44100, 22050, 11025, 8000];
+const SAMPLE_RATE_OPTIONS: SfxSampleRate[] = [44100, 48000, 22050, 11025, 8000];
 const BIT_DEPTH_OPTIONS: SfxBitDepth[] = [16, 8];
 const DEFAULT_EXPANDED_SECTIONS = {
   effects: false,
@@ -31,6 +40,14 @@ const DEFAULT_EXPANDED_SECTIONS = {
   filter: false,
 } as const;
 const EXPORT_FORMATS = ['wav', 'json', 'mp3', 'ogg'] as const;
+const EXPORT_SETTINGS_STORAGE_KEY = 'afct-sfx-lab:export-v1';
+const PEAK_TARGETS: Array<{ value: number | null; label: TranslationKey }> = [
+  { value: null, label: 'export.peakOff' },
+  { value: -3, label: 'export.peakMinus3' },
+  { value: -6, label: 'export.peakMinus6' },
+  { value: -12, label: 'export.peakMinus12' },
+];
+const VARIANT_COUNT = 5;
 const SHARE_HASH_PREFIX = '#s=';
 const SHARE_VERSION = 1;
 
@@ -324,6 +341,29 @@ function loadHistoryFromStorage(t: Translate): SavedSfxHistoryItem[] {
     return [];
   }
 }
+function loadExportSettings(): SfxExportSettings {
+  if (typeof window === 'undefined') return DEFAULT_EXPORT_SETTINGS;
+  try {
+    const raw = window.localStorage.getItem(EXPORT_SETTINGS_STORAGE_KEY);
+    if (!raw) return DEFAULT_EXPORT_SETTINGS;
+    const parsed = JSON.parse(raw) as Partial<SfxExportSettings>;
+    return {
+      trimSilence: parsed.trimSilence === true,
+      targetPeakDb: typeof parsed.targetPeakDb === 'number' ? parsed.targetPeakDb : null,
+      namePrefix: typeof parsed.namePrefix === 'string' ? parsed.namePrefix.slice(0, 24) : '',
+    };
+  } catch {
+    return DEFAULT_EXPORT_SETTINGS;
+  }
+}
+function saveExportSettings(settings: SfxExportSettings): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(EXPORT_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  } catch {
+    // A full storage quota must not block exporting.
+  }
+}
 function saveHistoryToStorage(history: SavedSfxHistoryItem[]): void {
   if (typeof window === 'undefined') return;
   try { window.localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history)); } catch {}
@@ -333,16 +373,28 @@ function createHistoryItem(snapshot: Snapshot, t: Translate): SavedSfxHistoryIte
   return { id: createId(), name: createDefaultHistoryName(snapshot.presetId, savedAt, t), savedAt, presetId: snapshot.presetId, params: clampSfxParams(snapshot.params), sampleRate: snapshot.sampleRate, bitDepth: snapshot.bitDepth, waveform: snapshot.waveform };
 }
 function toSnapshot(item: SavedSfxHistoryItem): Snapshot { return { name: item.name, presetId: item.presetId, params: item.params, sampleRate: item.sampleRate, bitDepth: item.bitDepth, waveform: item.waveform }; }
-async function exportSnapshot(format: ExportFormat, snapshot: Snapshot): Promise<Blob> {
+async function exportSnapshot(
+  format: ExportFormat,
+  snapshot: Snapshot,
+  settings: SfxExportSettings,
+): Promise<Blob> {
   if (format === 'json') return new Blob([serializeSfxParams(snapshot.params)], { type: 'application/json' });
   const rendered = renderSfx(snapshot.params, { sampleRate: snapshot.sampleRate, bitDepth: snapshot.bitDepth });
-  if (format === 'wav') return encodeSfxWav(rendered.samples, snapshot.sampleRate, snapshot.bitDepth);
-  if (format === 'mp3') return encodeMp3FromSamples(rendered.samples, snapshot.sampleRate);
-  return encodeOggFromSamples(rendered.samples, snapshot.sampleRate, snapshot.name);
+  const samples = masterForExport(rendered.samples, snapshot.sampleRate, {
+    trim: settings.trimSilence,
+    targetPeakDb: settings.targetPeakDb,
+  });
+  if (format === 'wav') return encodeSfxWav(samples, snapshot.sampleRate, snapshot.bitDepth);
+  if (format === 'mp3') return encodeMp3FromSamples(samples, snapshot.sampleRate);
+  return encodeOggFromSamples(samples, snapshot.sampleRate, snapshot.name);
 }
-async function exportHistoryArchive(format: ExportFormat, items: SavedSfxHistoryItem[]): Promise<Blob> {
+async function exportHistoryArchive(
+  format: ExportFormat,
+  items: SavedSfxHistoryItem[],
+  settings: SfxExportSettings,
+): Promise<Blob> {
   const zipEntries = await Promise.all(items.map(async (item, index) => {
-    const blob = await exportSnapshot(format, toSnapshot(item));
+    const blob = await exportSnapshot(format, toSnapshot(item), settings);
     return {
       name: `${String(index + 1).padStart(2, '0')}-${sanitizeFileStem(item.name)}.${format}`,
       data: new Uint8Array(await new Response(blob).arrayBuffer()),
@@ -377,8 +429,8 @@ function ParamField(props: { label: string; hint: string; value: number; display
   );
 }
 
-function ExportMenu(props: { menuId: string; label: string; triggerText?: string; variant?: 'console' | 'inline'; isOpen: boolean; isExporting: boolean; triggerClassName: string; onToggle: (menuId: string) => void; onExport: (format: ExportFormat) => void }) {
-  const { menuId, label, triggerText, variant = 'inline', isOpen, isExporting, triggerClassName, onToggle, onExport } = props;
+function ExportMenu(props: { menuId: string; label: string; triggerText?: string; variant?: 'console' | 'inline'; isOpen: boolean; isExporting: boolean; triggerClassName: string; extraItems?: Array<{ label: string; onSelect: () => void }>; onToggle: (menuId: string) => void; onExport: (format: ExportFormat) => void }) {
+  const { menuId, label, triggerText, variant = 'inline', isOpen, isExporting, triggerClassName, extraItems = [], onToggle, onExport } = props;
   const { t } = useI18n();
   return (
     <div className={`export-menu ${isOpen ? 'is-open' : ''}`}>
@@ -390,6 +442,9 @@ function ExportMenu(props: { menuId: string; label: string; triggerText?: string
         <div className="export-menu__list" role="menu" aria-label={t('export.menuLabel', { label })}>
           {EXPORT_FORMATS.map((format) => (
             <button key={format} className="export-menu__item" type="button" role="menuitem" onClick={() => onExport(format)}>{t(`export.${format}`)}</button>
+          ))}
+          {extraItems.map((item) => (
+            <button key={item.label} className="export-menu__item" type="button" role="menuitem" onClick={item.onSelect}>{item.label}</button>
           ))}
         </div>
       ) : null}
@@ -414,6 +469,7 @@ export default function GameSfxGenerator() {
   const [editingHistoryName, setEditingHistoryName] = useState('');
   const [expandedSections, setExpandedSections] = useState<Record<ControlSectionId, boolean>>({ ...DEFAULT_EXPANDED_SECTIONS });
   const [bypassFx, setBypassFx] = useState(false);
+  const [exportSettings, setExportSettings] = useState<SfxExportSettings>(() => loadExportSettings());
 
   const waveformCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -438,6 +494,7 @@ export default function GameSfxGenerator() {
   useEffect(() => { paramsRef.current = params; }, [params]);
   useEffect(() => { setSerialized(serializeSfxParams(params)); }, [params]);
   useEffect(() => { saveHistoryToStorage(history); }, [history]);
+  useEffect(() => { saveExportSettings(exportSettings); }, [exportSettings]);
   useEffect(() => {
     if (shareInitRef.current) return;
     shareInitRef.current = true;
@@ -622,7 +679,7 @@ export default function GameSfxGenerator() {
     setExportingMenuId(menuId);
     setStatus({ key: 'status.exporting', vars: { source: sourceLabel, format } });
     try {
-      const blob = await exportSnapshot(format, snapshot);
+      const blob = await exportSnapshot(format, snapshot, exportSettings);
       downloadBlob(blob, `${sanitizeFileStem(snapshot.name)}.${format}`);
       setStatus({ key: 'status.exported', vars: { source: sourceLabel, format } });
       setOpenExportMenu(null);
@@ -642,7 +699,7 @@ export default function GameSfxGenerator() {
     setExportingMenuId(menuId);
     setStatus({ key: 'status.zipping', vars: { format } });
     try {
-      const blob = await exportHistoryArchive(format, history);
+      const blob = await exportHistoryArchive(format, history, exportSettings);
       downloadBlob(blob, `afct-sfx-history-${format}.zip`);
       setStatus({ key: 'status.zipExported', vars: { format } });
       setOpenExportMenu(null);
@@ -650,6 +707,54 @@ export default function GameSfxGenerator() {
       setStatus({ key: 'status.zipFailed', vars: { format } });
     } finally {
       setExportingMenuId(null);
+    }
+  };
+
+  const toExportRequest = (item: SavedSfxHistoryItem, seed: number | null): GameExportRequest => ({
+    name: item.name,
+    presetId: item.presetId,
+    params: item.params,
+    sampleRate: item.sampleRate,
+    bitDepth: item.bitDepth,
+    seed,
+  });
+  const runGamePackageExport = async (): Promise<void> => {
+    if (history.length === 0) {
+      setStatus({ key: 'status.historyEmptyExport' });
+      return;
+    }
+
+    setStatus({ key: 'status.packaging' });
+    try {
+      const blob = await buildGamePackage(history.map((item) => toExportRequest(item, null)), exportSettings);
+      const stamp = new Date().toISOString().slice(0, 10);
+      downloadBlob(blob, `afct-sfx-game-package-${stamp}.zip`);
+      setStatus({ key: 'status.packaged', vars: { count: history.length } });
+    } catch {
+      setStatus({ key: 'status.packageFailed' });
+    }
+  };
+  const runVariantsExport = async (item: SavedSfxHistoryItem): Promise<void> => {
+    const baseSeed = randomSeed();
+    const requests: GameExportRequest[] = Array.from({ length: VARIANT_COUNT }, (_, index) => {
+      const seed = (baseSeed + index) >>> 0;
+      return {
+        name: `${item.name} v${index + 1}`,
+        presetId: item.presetId,
+        params: createSfxVariant(item.params, item.presetId, seed),
+        sampleRate: item.sampleRate,
+        bitDepth: item.bitDepth,
+        seed,
+      };
+    });
+
+    setStatus({ key: 'status.packaging' });
+    try {
+      const blob = await buildGamePackage(requests, exportSettings);
+      downloadBlob(blob, `afct-sfx-variants-${sanitizeFileStem(item.name)}.zip`);
+      setStatus({ key: 'status.variantsPackaged', vars: { count: VARIANT_COUNT, name: item.name } });
+    } catch {
+      setStatus({ key: 'status.packageFailed' });
     }
   };
 
@@ -722,6 +827,39 @@ export default function GameSfxGenerator() {
           <div className="deck__group deck__group--output">
             <ExportMenu menuId="current" label={t('export.currentLabel')} variant="console" isOpen={openExportMenu === 'current'} isExporting={exportingMenuId === 'current'} triggerClassName="btn btn--ghost export-menu__trigger export-menu__trigger--console" onToggle={toggleExportMenu} onExport={(format) => { void runExport(format, currentSnapshot, 'current', { key: 'status.sourceCurrent' }); }} />
           </div>
+        </div>
+
+        <div className="master">
+          <span className="master__label">{t('export.masterLabel')}</span>
+          <label className="master__check">
+            <input
+              type="checkbox"
+              checked={exportSettings.trimSilence}
+              onChange={(event) => setExportSettings({ ...exportSettings, trimSilence: event.target.checked })}
+            />
+            <span>{t('export.trim')}</span>
+          </label>
+          <label className="master__field">
+            <span className="master__field-label">{t('export.peak')}</span>
+            <select
+              value={exportSettings.targetPeakDb === null ? 'off' : String(exportSettings.targetPeakDb)}
+              onChange={(event) => setExportSettings({ ...exportSettings, targetPeakDb: event.target.value === 'off' ? null : Number(event.target.value) })}
+            >
+              {PEAK_TARGETS.map((option) => (
+                <option key={String(option.value)} value={option.value === null ? 'off' : String(option.value)}>{t(option.label)}</option>
+              ))}
+            </select>
+          </label>
+          <label className="master__field">
+            <span className="master__field-label">{t('export.prefix')}</span>
+            <input
+              type="text"
+              maxLength={24}
+              value={exportSettings.namePrefix}
+              placeholder={t('export.prefixPlaceholder')}
+              onChange={(event) => setExportSettings({ ...exportSettings, namePrefix: event.target.value })}
+            />
+          </label>
         </div>
 
         <p className={`status${isPlaying ? ' is-live' : ''}`} role="status">{bypassFx ? t('status.fxBypassed') : t(status.key, status.vars)}</p>
@@ -846,7 +984,10 @@ export default function GameSfxGenerator() {
               <p>{history.length > 0 ? t('history.count', { count: history.length }) : t('history.hint')}</p>
             </div>
             {history.length > 0 ? (
-              <ExportMenu menuId="history-all" label={t('export.historyAllLabel')} triggerText={t('export.all')} variant="inline" isOpen={openExportMenu === 'history-all'} isExporting={exportingMenuId === 'history-all'} triggerClassName="btn btn--quiet btn--sm export-menu__trigger export-menu__trigger--inline" onToggle={toggleExportMenu} onExport={(format) => { void runHistoryArchiveExport(format); }} />
+              <div className="sheet-head__actions">
+                <button className="btn btn--quiet btn--sm" type="button" onClick={() => { void runGamePackageExport(); }}>{t('export.gamePackage')}</button>
+                <ExportMenu menuId="history-all" label={t('export.historyAllLabel')} triggerText={t('export.all')} variant="inline" isOpen={openExportMenu === 'history-all'} isExporting={exportingMenuId === 'history-all'} triggerClassName="btn btn--quiet btn--sm export-menu__trigger export-menu__trigger--inline" onToggle={toggleExportMenu} onExport={(format) => { void runHistoryArchiveExport(format); }} />
+              </div>
             ) : null}
           </header>
 
@@ -880,7 +1021,7 @@ export default function GameSfxGenerator() {
                     <div className="take__actions">
                       <button className="btn btn--quiet btn--sm" type="button" onClick={() => applyHistoryToWorkbench(item)}>{t('history.apply')}</button>
                       <button className="btn btn--quiet btn--sm" type="button" onClick={() => { void handlePlayHistory(item); }}>{t('history.play')}</button>
-                      <ExportMenu menuId={menuId} label={t('export.historyItemLabel', { name: item.name })} variant="inline" isOpen={openExportMenu === menuId} isExporting={exportingMenuId === menuId} triggerClassName="btn btn--quiet btn--sm export-menu__trigger export-menu__trigger--inline" onToggle={toggleExportMenu} onExport={(format) => { void runExport(format, toSnapshot(item), menuId, { key: 'status.sourceHistory', vars: { name: item.name } }); }} />
+                      <ExportMenu menuId={menuId} label={t('export.historyItemLabel', { name: item.name })} variant="inline" isOpen={openExportMenu === menuId} isExporting={exportingMenuId === menuId} triggerClassName="btn btn--quiet btn--sm export-menu__trigger export-menu__trigger--inline" extraItems={[{ label: t('export.variants'), onSelect: () => { setOpenExportMenu(null); void runVariantsExport(item); } }]} onToggle={toggleExportMenu} onExport={(format) => { void runExport(format, toSnapshot(item), menuId, { key: 'status.sourceHistory', vars: { name: item.name } }); }} />
                       <button className="btn btn--quiet btn--sm" type="button" onClick={() => deleteHistoryItem(item)}>{t('history.delete')}</button>
                     </div>
                   </li>

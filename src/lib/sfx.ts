@@ -1,4 +1,5 @@
 import { FX_MAX_RENDER_SECONDS, applyFxChain, fxTailSeconds } from './effects';
+import { createSeededRandom } from './prng';
 
 export type SfxWaveform = 'square' | 'sawtooth' | 'sine' | 'noise';
 export type SfxEngine = 'sfxr' | 'footsteppr';
@@ -86,7 +87,30 @@ export type SfxParams = {
 };
 
 export type SfxBitDepth = 8 | 16;
-export type SfxSampleRate = 8000 | 11025 | 22050 | 44100;
+export type SfxSampleRate = 8000 | 11025 | 22050 | 44100 | 48000;
+
+export type SfxGenerateOptions = {
+  /** Same seed + same preset + same starting params produce the same sound. */
+  seed?: number;
+};
+
+let activeRandom: () => number = Math.random;
+
+function rnd(): number {
+  return activeRandom();
+}
+
+function withRandomSource<T>(seed: number | undefined, fn: () => T): T {
+  if (seed === undefined) return fn();
+
+  const previous = activeRandom;
+  activeRandom = createSeededRandom(seed);
+  try {
+    return fn();
+  } finally {
+    activeRandom = previous;
+  }
+}
 
 export type SfxRenderOptions = {
   sampleRate: SfxSampleRate;
@@ -247,7 +271,14 @@ export function deserializeSfxParams(serialized: string): SfxParams {
   return clampSfxParams(parsed);
 }
 
-export function mutateSfxParams(current: SfxParams): SfxParams {
+export function mutateSfxParams(
+  current: SfxParams,
+  options: SfxGenerateOptions = {},
+): SfxParams {
+  return withRandomSource(options.seed, () => mutateSfxParamsWithActiveRandom(current));
+}
+
+function mutateSfxParamsWithActiveRandom(current: SfxParams): SfxParams {
   if (current.engine === 'footsteppr') {
     return clampSfxParams({
       ...current,
@@ -308,33 +339,33 @@ function createSfxPresetCore(
     case 'random':
       return clampSfxParams({
         waveform: randomWaveform(),
-        attack: Math.random() * 0.12,
+        attack: rnd() * 0.12,
         sustain: randomRange(0.05, 0.44),
-        sustainPunch: Math.random(),
+        sustainPunch: rnd(),
         decay: randomRange(0.08, 0.52),
         startFrequency: randomRange(0.12, 0.95),
-        minFrequency: Math.random() * 0.3,
+        minFrequency: rnd() * 0.3,
         slide: randomRange(-0.65, 0.42),
         deltaSlide: randomRange(-0.22, 0.22),
-        vibratoDepth: Math.random() * 0.7,
-        vibratoSpeed: Math.random() * 0.8,
+        vibratoDepth: rnd() * 0.7,
+        vibratoSpeed: rnd() * 0.8,
         changeAmount: randomRange(-0.7, 0.7),
-        changeSpeed: Math.random() * 0.9,
-        squareDuty: Math.random(),
+        changeSpeed: rnd() * 0.9,
+        squareDuty: rnd(),
         dutySweep: randomRange(-0.4, 0.4),
-        repeatSpeed: Math.random() * 0.7,
+        repeatSpeed: rnd() * 0.7,
         phaserOffset: randomRange(-0.8, 0.8),
         phaserSweep: randomRange(-0.3, 0.3),
         lowPassCutoff: randomRange(0.2, 1),
         lowPassSweep: randomRange(-0.25, 0.18),
-        lowPassResonance: Math.random() * 0.7,
-        highPassCutoff: Math.random() * 0.25,
+        lowPassResonance: rnd() * 0.7,
+        highPassCutoff: rnd() * 0.25,
         highPassSweep: randomRange(-0.12, 0.1),
         masterVolume: randomRange(0.38, 0.72),
       });
     case 'pickupCoin':
       return clampSfxParams({
-        waveform: Math.random() > 0.5 ? 'square' : 'sine',
+        waveform: rnd() > 0.5 ? 'square' : 'sine',
         sustain: randomRange(0.04, 0.12),
         sustainPunch: randomRange(0.35, 0.8),
         decay: randomRange(0.08, 0.16),
@@ -385,7 +416,7 @@ function createSfxPresetCore(
       });
     case 'powerup':
       return clampSfxParams({
-        waveform: Math.random() > 0.5 ? 'square' : 'sawtooth',
+        waveform: rnd() > 0.5 ? 'square' : 'sawtooth',
         sustain: randomRange(0.14, 0.28),
         sustainPunch: randomRange(0.18, 0.45),
         decay: randomRange(0.16, 0.3),
@@ -400,7 +431,7 @@ function createSfxPresetCore(
       });
     case 'hitHurt':
       return clampSfxParams({
-        waveform: Math.random() > 0.5 ? 'noise' : 'square',
+        waveform: rnd() > 0.5 ? 'noise' : 'square',
         sustain: randomRange(0.02, 0.12),
         sustainPunch: randomRange(0.2, 0.55),
         decay: randomRange(0.08, 0.2),
@@ -412,7 +443,7 @@ function createSfxPresetCore(
       });
     case 'jump':
       return clampSfxParams({
-        waveform: Math.random() > 0.35 ? 'square' : 'sine',
+        waveform: rnd() > 0.35 ? 'square' : 'sine',
         sustain: randomRange(0.08, 0.16),
         sustainPunch: randomRange(0.12, 0.28),
         decay: randomRange(0.12, 0.24),
@@ -474,7 +505,7 @@ function createSfxPresetCore(
     case 'footstepDirt':
       return clampSfxParams({
         engine: 'footsteppr',
-        waveform: Math.random() > 0.75 ? 'square' : 'noise',
+        waveform: rnd() > 0.75 ? 'square' : 'noise',
         footstepTerrain: 'dirt',
         footstepHeel: randomRange(0.48, 0.68),
         footstepRoll: randomRange(0.48, 0.68),
@@ -546,7 +577,7 @@ function createSfxPresetCore(
     case 'footstepWood':
       return clampSfxParams({
         engine: 'footsteppr',
-        waveform: Math.random() > 0.8 ? 'square' : 'noise',
+        waveform: rnd() > 0.8 ? 'square' : 'noise',
         footstepTerrain: 'wood',
         footstepHeel: randomRange(0.6, 0.8),
         footstepRoll: randomRange(0.3, 0.5),
@@ -621,7 +652,7 @@ function createSfxPresetCore(
       });
     case 'blipSelect':
       return clampSfxParams({
-        waveform: Math.random() > 0.5 ? 'square' : 'sine',
+        waveform: rnd() > 0.5 ? 'square' : 'sine',
         sustain: randomRange(0.02, 0.08),
         sustainPunch: randomRange(0.08, 0.3),
         decay: randomRange(0.04, 0.12),
@@ -643,7 +674,7 @@ function createSfxPresetCore(
       });
     case 'notifyPop':
       return clampSfxParams({
-        waveform: Math.random() > 0.5 ? 'sine' : 'square',
+        waveform: rnd() > 0.5 ? 'sine' : 'square',
         sustain: randomRange(0.06, 0.14),
         sustainPunch: randomRange(0.1, 0.26),
         decay: randomRange(0.08, 0.16),
@@ -657,7 +688,7 @@ function createSfxPresetCore(
       });
     case 'successChime':
       return clampSfxParams({
-        waveform: Math.random() > 0.4 ? 'sine' : 'square',
+        waveform: rnd() > 0.4 ? 'sine' : 'square',
         attack: randomRange(0.005, 0.02),
         sustain: randomRange(0.16, 0.3),
         sustainPunch: randomRange(0.04, 0.16),
@@ -688,7 +719,7 @@ function createSfxPresetCore(
       });
     case 'synth':
       return clampSfxParams({
-        waveform: Math.random() > 0.5 ? 'sawtooth' : 'sine',
+        waveform: rnd() > 0.5 ? 'sawtooth' : 'sine',
         attack: randomRange(0.02, 0.1),
         sustain: randomRange(0.22, 0.54),
         sustainPunch: randomRange(0, 0.2),
@@ -736,7 +767,7 @@ function createSfxPresetCore(
       });
     case 'riser':
       return clampSfxParams({
-        waveform: Math.random() > 0.5 ? 'sawtooth' : 'square',
+        waveform: rnd() > 0.5 ? 'sawtooth' : 'square',
         attack: randomRange(0.14, 0.26),
         sustain: randomRange(0.48, 0.68),
         sustainPunch: randomRange(0.02, 0.1),
@@ -753,7 +784,7 @@ function createSfxPresetCore(
       });
     case 'impact':
       return clampSfxParams({
-        waveform: Math.random() > 0.5 ? 'sawtooth' : 'sine',
+        waveform: rnd() > 0.5 ? 'sawtooth' : 'sine',
         sustain: randomRange(0.08, 0.16),
         sustainPunch: randomRange(0.5, 0.8),
         decay: randomRange(0.34, 0.52),
@@ -769,18 +800,18 @@ function createSfxPresetCore(
       });
     case 'glitch':
       return clampSfxParams({
-        waveform: Math.random() > 0.3 ? 'square' : 'sawtooth',
+        waveform: rnd() > 0.3 ? 'square' : 'sawtooth',
         sustain: randomRange(0.1, 0.2),
         sustainPunch: randomRange(0.2, 0.44),
         decay: randomRange(0.12, 0.22),
         startFrequency: randomRange(0.38, 0.62),
-        changeAmount: randomRange(0.5, 0.86) * (Math.random() > 0.5 ? 1 : -1),
+        changeAmount: randomRange(0.5, 0.86) * (rnd() > 0.5 ? 1 : -1),
         changeSpeed: randomRange(0.55, 0.9),
         squareDuty: randomRange(0.08, 0.3),
-        dutySweep: randomRange(0.3, 0.56) * (Math.random() > 0.5 ? 1 : -1),
+        dutySweep: randomRange(0.3, 0.56) * (rnd() > 0.5 ? 1 : -1),
         repeatSpeed: randomRange(0.28, 0.5),
-        phaserOffset: randomRange(0.3, 0.7) * (Math.random() > 0.5 ? 1 : -1),
-        phaserSweep: randomRange(0.2, 0.5) * (Math.random() > 0.5 ? 1 : -1),
+        phaserOffset: randomRange(0.3, 0.7) * (rnd() > 0.5 ? 1 : -1),
+        phaserSweep: randomRange(0.2, 0.5) * (rnd() > 0.5 ? 1 : -1),
         lowPassCutoff: randomRange(0.6, 0.9),
         highPassCutoff: randomRange(0.06, 0.18),
         masterVolume: 0.44,
@@ -815,12 +846,12 @@ const PRESET_FX: Partial<Record<SfxPresetId, Partial<SfxParams>>> = {
 function randomFxOverlay(): Partial<SfxParams> {
   return {
     fxDrive: randomRange(0, 0.22),
-    fxCrushRate: Math.random() > 0.7 ? randomRange(0.1, 0.4) : 0,
-    fxCrushBits: Math.random() > 0.75 ? randomRange(0.1, 0.5) : 0,
+    fxCrushRate: rnd() > 0.7 ? randomRange(0.1, 0.4) : 0,
+    fxCrushBits: rnd() > 0.75 ? randomRange(0.1, 0.5) : 0,
     fxTone: randomRange(-0.3, 0.3),
-    fxDelayMix: Math.random() > 0.5 ? randomRange(0.05, 0.22) : 0,
+    fxDelayMix: rnd() > 0.5 ? randomRange(0.05, 0.22) : 0,
     fxDelayFeedback: randomRange(0.2, 0.45),
-    fxReverbMix: Math.random() > 0.4 ? randomRange(0.08, 0.26) : 0,
+    fxReverbMix: rnd() > 0.4 ? randomRange(0.08, 0.26) : 0,
     fxReverbSize: randomRange(0.35, 0.8),
   };
 }
@@ -828,11 +859,29 @@ function randomFxOverlay(): Partial<SfxParams> {
 export function createSfxPreset(
   preset: SfxPresetId,
   current: SfxParams = DEFAULT_SFX_PARAMS,
+  options: SfxGenerateOptions = {},
 ): SfxParams {
-  const base = createSfxPresetCore(preset, current);
-  const overlay = preset === 'random' ? randomFxOverlay() : PRESET_FX[preset];
+  return withRandomSource(options.seed, () => {
+    const base = createSfxPresetCore(preset, current);
+    const overlay = preset === 'random' ? randomFxOverlay() : PRESET_FX[preset];
 
-  return overlay ? clampSfxParams({ ...base, ...overlay }) : base;
+    return overlay ? clampSfxParams({ ...base, ...overlay }) : base;
+  });
+}
+
+/**
+ * Re-rolls an existing sound as a new take. Uses the preset recipe when the
+ * take still knows its preset, otherwise it nudges the current parameters.
+ */
+export function createSfxVariant(
+  params: SfxParams,
+  presetId: SfxPresetId | null,
+  seed: number,
+): SfxParams {
+  const recipe = presetId && presetId !== 'mutate' ? presetId : null;
+  return recipe
+    ? createSfxPreset(recipe, params, { seed })
+    : mutateSfxParams(params, { seed });
 }
 
 export function renderSfx(
@@ -1055,11 +1104,13 @@ function renderFootstepprSamples(
     : resampleSignal(boostedSignal, internalSampleRate, options.sampleRate);
 }
 
-export function encodeSfxWav(
+/** Encodes a mono PCM wav. Kept separate from the Blob wrapper so game export
+ *  packages can write zip entries without a Blob round-trip. */
+export function encodeSfxWavBytes(
   samples: Float32Array,
   sampleRate: SfxSampleRate,
   bitDepth: SfxBitDepth,
-): Blob {
+): Uint8Array<ArrayBuffer> {
   const channelCount = 1;
   const bytesPerSample = bitDepth / 8;
   const byteRate = sampleRate * channelCount * bytesPerSample;
@@ -1097,7 +1148,15 @@ export function encodeSfxWav(
     }
   }
 
-  return new Blob([buffer], { type: 'audio/wav' });
+  return new Uint8Array(buffer);
+}
+
+export function encodeSfxWav(
+  samples: Float32Array,
+  sampleRate: SfxSampleRate,
+  bitDepth: SfxBitDepth,
+): Blob {
+  return new Blob([encodeSfxWavBytes(samples, sampleRate, bitDepth)], { type: 'audio/wav' });
 }
 
 function getWaveformSample(
@@ -1716,15 +1775,15 @@ function signedCurve(value: number): number {
 
 function randomWaveform(): SfxWaveform {
   const waveforms: SfxWaveform[] = ['square', 'sawtooth', 'sine', 'noise'];
-  return waveforms[Math.floor(Math.random() * waveforms.length)] ?? 'square';
+  return waveforms[Math.floor(rnd() * waveforms.length)] ?? 'square';
 }
 
 function randomRange(min: number, max: number): number {
-  return min + Math.random() * (max - min);
+  return min + rnd() * (max - min);
 }
 
 function randomSigned(): number {
-  return Math.random() * 2 - 1;
+  return rnd() * 2 - 1;
 }
 
 function isWaveform(value: unknown): value is SfxWaveform {
