@@ -1,3 +1,5 @@
+import { FX_MAX_RENDER_SECONDS, applyFxChain, fxTailSeconds } from './effects';
+
 export type SfxWaveform = 'square' | 'sawtooth' | 'sine' | 'noise';
 export type SfxEngine = 'sfxr' | 'footsteppr';
 export type SfxFootstepTerrain =
@@ -71,6 +73,16 @@ export type SfxParams = {
   highPassCutoff: number;
   highPassSweep: number;
   masterVolume: number;
+  fxDrive: number;
+  fxCrushRate: number;
+  fxCrushBits: number;
+  fxTone: number;
+  fxDelayTime: number;
+  fxDelayFeedback: number;
+  fxDelayMix: number;
+  fxReverbSize: number;
+  fxReverbMix: number;
+  fxNormalize: number;
 };
 
 export type SfxBitDepth = 8 | 16;
@@ -125,6 +137,16 @@ export const DEFAULT_SFX_PARAMS: SfxParams = {
   highPassCutoff: 0,
   highPassSweep: 0,
   masterVolume: 0.56,
+  fxDrive: 0,
+  fxCrushRate: 0,
+  fxCrushBits: 0,
+  fxTone: 0,
+  fxDelayTime: 0.25,
+  fxDelayFeedback: 0.3,
+  fxDelayMix: 0,
+  fxReverbSize: 0.5,
+  fxReverbMix: 0,
+  fxNormalize: 1,
 };
 
 export const SFX_PRESET_ORDER: SfxPresetId[] = [
@@ -201,6 +223,18 @@ export function clampSfxParams(params: Partial<SfxParams>): SfxParams {
     highPassCutoff: clamp(merged.highPassCutoff, 0, 1),
     highPassSweep: clamp(merged.highPassSweep, -1, 1),
     masterVolume: clamp(merged.masterVolume, 0, 1),
+    fxDrive: clamp(merged.fxDrive, 0, 1),
+    fxCrushRate: clamp(merged.fxCrushRate, 0, 1),
+    fxCrushBits: clamp(merged.fxCrushBits, 0, 1),
+    fxTone: clamp(merged.fxTone, -1, 1),
+    fxDelayTime: clamp(merged.fxDelayTime, 0, 1),
+    fxDelayFeedback: clamp(merged.fxDelayFeedback, 0, 1),
+    fxDelayMix: clamp(merged.fxDelayMix, 0, 1),
+    fxReverbSize: clamp(merged.fxReverbSize, 0, 1),
+    fxReverbMix: clamp(merged.fxReverbMix, 0, 1),
+    fxNormalize: Number.isFinite(merged.fxNormalize)
+      ? (merged.fxNormalize >= 0.5 ? 1 : 0)
+      : DEFAULT_SFX_PARAMS.fxNormalize,
   };
 }
 
@@ -222,6 +256,10 @@ export function mutateSfxParams(current: SfxParams): SfxParams {
       footstepBall: current.footstepBall + randomRange(-0.12, 0.12),
       footstepSwiftness: current.footstepSwiftness + randomRange(-0.1, 0.1),
       masterVolume: current.masterVolume + randomRange(-0.05, 0.05),
+      fxDrive: current.fxDrive + randomRange(-0.04, 0.04),
+      fxTone: current.fxTone + randomRange(-0.08, 0.08),
+      fxReverbSize: current.fxReverbSize + randomRange(-0.1, 0.1),
+      fxReverbMix: current.fxReverbMix + randomRange(-0.06, 0.06),
     });
   }
 
@@ -250,10 +288,19 @@ export function mutateSfxParams(current: SfxParams): SfxParams {
     highPassCutoff: current.highPassCutoff + randomRange(-0.14, 0.14),
     highPassSweep: current.highPassSweep + randomRange(-0.12, 0.12),
     masterVolume: current.masterVolume + randomRange(-0.08, 0.08),
+    fxDrive: current.fxDrive + randomRange(-0.05, 0.05),
+    fxCrushRate: current.fxCrushRate + randomRange(-0.05, 0.05),
+    fxCrushBits: current.fxCrushBits + randomRange(-0.05, 0.05),
+    fxTone: current.fxTone + randomRange(-0.12, 0.12),
+    fxDelayTime: current.fxDelayTime + randomRange(-0.08, 0.08),
+    fxDelayFeedback: current.fxDelayFeedback + randomRange(-0.08, 0.08),
+    fxDelayMix: current.fxDelayMix + randomRange(-0.08, 0.08),
+    fxReverbSize: current.fxReverbSize + randomRange(-0.1, 0.1),
+    fxReverbMix: current.fxReverbMix + randomRange(-0.1, 0.1),
   });
 }
 
-export function createSfxPreset(
+function createSfxPresetCore(
   preset: SfxPresetId,
   current: SfxParams = DEFAULT_SFX_PARAMS,
 ): SfxParams {
@@ -745,14 +792,104 @@ export function createSfxPreset(
   }
 }
 
+const PRESET_FX: Partial<Record<SfxPresetId, Partial<SfxParams>>> = {
+  pickupCoin: { fxDelayMix: 0.1, fxDelayFeedback: 0.3 },
+  laserShoot: { fxDelayMix: 0.16, fxDelayFeedback: 0.34, fxTone: 0.1 },
+  explosion: { fxDrive: 0.42, fxTone: -0.14, fxReverbMix: 0.4, fxReverbSize: 0.78 },
+  powerup: { fxDelayMix: 0.14, fxDelayFeedback: 0.32 },
+  hitHurt: { fxDrive: 0.18 },
+  successChime: { fxReverbMix: 0.2, fxReverbSize: 0.5 },
+  errorBuzz: { fxDrive: 0.14, fxCrushBits: 0.2 },
+  whoosh: { fxDelayMix: 0.26, fxDelayFeedback: 0.44, fxReverbMix: 0.3, fxReverbSize: 0.7, fxTone: 0.1 },
+  riser: { fxDelayMix: 0.28, fxDelayFeedback: 0.48, fxReverbMix: 0.3, fxReverbSize: 0.78 },
+  impact: { fxDrive: 0.52, fxReverbMix: 0.42, fxReverbSize: 0.82 },
+  glitch: { fxCrushRate: 0.42, fxCrushBits: 0.6, fxDelayMix: 0.18, fxDelayFeedback: 0.4 },
+  footstepMud: { fxTone: -0.16, fxReverbMix: 0.12, fxReverbSize: 0.45 },
+  footstepWood: { fxTone: 0.12, fxReverbMix: 0.1, fxReverbSize: 0.4 },
+  footstepMetal: { fxTone: 0.16, fxReverbMix: 0.26, fxReverbSize: 0.55 },
+  footstepWater: { fxReverbMix: 0.3, fxReverbSize: 0.62 },
+  synth: { fxReverbMix: 0.18, fxReverbSize: 0.55 },
+  tone: { fxReverbMix: 0.16, fxReverbSize: 0.5 },
+};
+
+function randomFxOverlay(): Partial<SfxParams> {
+  return {
+    fxDrive: randomRange(0, 0.22),
+    fxCrushRate: Math.random() > 0.7 ? randomRange(0.1, 0.4) : 0,
+    fxCrushBits: Math.random() > 0.75 ? randomRange(0.1, 0.5) : 0,
+    fxTone: randomRange(-0.3, 0.3),
+    fxDelayMix: Math.random() > 0.5 ? randomRange(0.05, 0.22) : 0,
+    fxDelayFeedback: randomRange(0.2, 0.45),
+    fxReverbMix: Math.random() > 0.4 ? randomRange(0.08, 0.26) : 0,
+    fxReverbSize: randomRange(0.35, 0.8),
+  };
+}
+
+export function createSfxPreset(
+  preset: SfxPresetId,
+  current: SfxParams = DEFAULT_SFX_PARAMS,
+): SfxParams {
+  const base = createSfxPresetCore(preset, current);
+  const overlay = preset === 'random' ? randomFxOverlay() : PRESET_FX[preset];
+
+  return overlay ? clampSfxParams({ ...base, ...overlay }) : base;
+}
+
 export function renderSfx(
   params: SfxParams,
   options: SfxRenderOptions,
 ): SfxRenderResult {
   const safeParams = clampSfxParams(params);
-  if (safeParams.engine === 'footsteppr') {
-    return renderFootsteppr(safeParams, options);
+  const baseSamples = safeParams.engine === 'footsteppr'
+    ? renderFootstepprSamples(safeParams, options)
+    : renderSfxrSamples(safeParams, options);
+
+  return finalizeSfx(baseSamples, safeParams, options);
+}
+
+function finalizeSfx(
+  baseSamples: Float32Array,
+  params: SfxParams,
+  options: SfxRenderOptions,
+): SfxRenderResult {
+  const tailSamples = Math.max(0, Math.round(fxTailSeconds(params) * options.sampleRate));
+  const maxSamples = Math.round(FX_MAX_RENDER_SECONDS * options.sampleRate);
+  const totalSamples = Math.min(maxSamples, baseSamples.length + tailSamples);
+  const samples = new Float32Array(totalSamples);
+  samples.set(baseSamples.subarray(0, Math.min(baseSamples.length, totalSamples)));
+
+  applyFxChain(samples, params, options.sampleRate);
+
+  let clippedSamples = 0;
+  let peak = 0;
+
+  for (let index = 0; index < samples.length; index += 1) {
+    const sample = samples[index] ?? 0;
+    if (Math.abs(sample) > 1) {
+      clippedSamples += 1;
+    }
+
+    const clampedSample = clamp(sample, -1, 1);
+    peak = Math.max(peak, Math.abs(clampedSample));
+    samples[index] = clampedSample;
   }
+
+  return {
+    samples,
+    stats: {
+      durationSeconds: totalSamples / options.sampleRate,
+      samples: totalSamples,
+      clippedSamples,
+      peak,
+      estimatedByteSize: 44 + totalSamples * (options.bitDepth / 8),
+    },
+  };
+}
+
+function renderSfxrSamples(
+  safeParams: SfxParams,
+  options: SfxRenderOptions,
+): Float32Array {
   const attackSeconds = safeParams.attack * 0.4;
   const sustainSeconds = 0.02 + safeParams.sustain * 1.2;
   const decaySeconds = safeParams.decay * 1.8;
@@ -813,8 +950,6 @@ export function renderSfx(
   let changeTriggered = false;
   let vibratoPhase = 0;
   let noiseValue = randomSigned();
-  let clippedSamples = 0;
-  let peak = 0;
 
   const resetCycle = (): void => {
     frequency = startFrequency;
@@ -893,31 +1028,16 @@ export function renderSfx(
     );
     sample *= safeParams.masterVolume;
 
-    if (Math.abs(sample) > 1) {
-      clippedSamples += 1;
-    }
-
-    const clampedSample = clamp(sample, -1, 1);
-    peak = Math.max(peak, Math.abs(clampedSample));
-    samples[index] = clampedSample;
+    samples[index] = sample;
   }
 
-  return {
-    samples,
-    stats: {
-      durationSeconds,
-      samples: totalSamples,
-      clippedSamples,
-      peak,
-      estimatedByteSize: 44 + totalSamples * (options.bitDepth / 8),
-    },
-  };
+  return samples;
 }
 
-function renderFootsteppr(
+function renderFootstepprSamples(
   params: SfxParams,
   options: SfxRenderOptions,
-): SfxRenderResult {
+): Float32Array {
   const durationSeconds = 0.1 + 0.7 * (1 - params.footstepSwiftness);
   const internalSampleRate = 44100;
   const totalSamples = Math.max(1, Math.floor(durationSeconds * internalSampleRate));
@@ -928,36 +1048,11 @@ function renderFootsteppr(
     internalSampleRate,
   );
   const scaledSignal = pdMulScalar(rawSignal, params.masterVolume);
-  const clippedSignal = pdClip(scaledSignal, -1, 1);
-  const boostedSignal = pdMulScalar(clippedSignal, 4);
-  const outputSignal = options.sampleRate === internalSampleRate
+  const boostedSignal = pdMulScalar(scaledSignal, 4);
+
+  return options.sampleRate === internalSampleRate
     ? boostedSignal
     : resampleSignal(boostedSignal, internalSampleRate, options.sampleRate);
-  const samples = new Float32Array(outputSignal.length);
-  let clippedSamples = 0;
-  let peak = 0;
-
-  for (let index = 0; index < outputSignal.length; index += 1) {
-    const sample = outputSignal[index] ?? 0;
-    if (Math.abs(sample) > 1) {
-      clippedSamples += 1;
-    }
-
-    const clampedSample = clamp(sample, -1, 1);
-    peak = Math.max(peak, Math.abs(clampedSample));
-    samples[index] = clampedSample;
-  }
-
-  return {
-    samples,
-    stats: {
-      durationSeconds,
-      samples: outputSignal.length,
-      clippedSamples,
-      peak,
-      estimatedByteSize: 44 + outputSignal.length * (options.bitDepth / 8),
-    },
-  };
 }
 
 export function encodeSfxWav(

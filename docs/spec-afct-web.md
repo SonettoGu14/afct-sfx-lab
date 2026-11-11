@@ -124,3 +124,60 @@ Dark "cinema darkroom / monitor wall": near-black navy canvas derived from `#010
 4. No authored Chinese copy outside `src/i18n/zh.ts`.
 5. Attribution to the original project visible in the footer and README; GPL-3.0 license retained.
 6. No console errors on initial load; layout holds at 1440 / 1024 / 390 widths.
+
+## 7. v1.1 effects rack (ui-i18n + theme)
+
+The engine already ships the FX chain in `src/lib/effects.ts` and `src/lib/sfx.ts` (Lead-owned, done). Ten new `SfxParams` fields exist and are part of JSON import/export automatically:
+
+| param | range | meaning |
+| --- | --- | --- |
+| `fxDrive` | 0..1 | tanh soft saturation (weight/punch) |
+| `fxCrushRate` | 0..1 | sample-and-hold decimation (grit) |
+| `fxCrushBits` | 0..1 | bit quantization (dirt) |
+| `fxTone` | -1..1 (signed) | one-knob tilt around 1 kHz (dark ↔ bright) |
+| `fxDelayTime` | 0..1 | echo spacing (0.03–0.40 s) |
+| `fxDelayFeedback` | 0..1 | echo repeats |
+| `fxDelayMix` | 0..1 | dry/wet of the echo |
+| `fxReverbSize` | 0..1 | room size |
+| `fxReverbMix` | 0..1 | dry/wet of the reverb |
+| `fxNormalize` | 0/1 | peak ceiling at 0.995 when 1 |
+
+Chain order is fixed: drive → bitcrush → tone → delay → reverb → peak ceiling → 6 ms fade-out. `applyFxChain` runs inside `renderSfx`, so canvas, stats, playback, WAV/MP3/OGG and ZIP all share one render. Rendering pads the buffer by `fxTailSeconds(params)` (0 for a fully dry chain), capped at 6 s total.
+
+### 7.1 UI contract
+
+1. Add one central control section before the existing five: `{ id: 'effects' }` rendered by the same `.control-section` markup as the rest. `ControlSection['id']` union must include `'effects'`, and `t()` keys `sections.effects.title` + `sections.effects.description` are required. Default `expandedSections.effects = false`.
+2. Fields (all percent sliders via the existing `SliderField`, `step: 0.01`): `fxDrive`, `fxCrushRate`, `fxCrushBits`, `fxTone` (`signed: true`), `fxDelayTime`, `fxDelayFeedback`, `fxDelayMix`, `fxReverbSize`, `fxReverbMix`. `fxNormalize` is **not** a slider.
+3. Below the slider grid add an extras row `.fx-extras`:
+   - Normalize toggle: `.fx-toggle` button with `aria-pressed`, label `t('effects.normalize.label')`, hint `t('effects.normalize.hint')`; clicking flips `params.fxNormalize` between 1 and 0.
+   - Bypass A/B: `.fx-bypass` button with `aria-pressed`; while active the **preview** (canvas, stats, play/auto-preview) renders `{...params, fxDrive:0, fxCrushRate:0, fxCrushBits:0, fxTone:0, fxDelayMix:0, fxReverbMix:0, fxNormalize:0}`; exports, JSON and history always use the real `params`. Status banner shows `t('status.fxBypassed')` while active.
+   - Share link: `.fx-share` button → copies `${location.origin}${location.pathname}#s=${base64url(JSON.stringify({ v: 1, p: params, sr: sampleRate, bd: bitDepth }))}`; base64url = `btoa(unescape(encodeURIComponent(json))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')`. Success → `t('status.shareCopied')`, failure → `t('status.shareCopyFailed')` (clipboard may be blocked; fall back to a temporary `<textarea>` + `document.execCommand('copy')` before reporting failure).
+4. Load `#s=` on mount (once): decode base64url → JSON; accept only `v === 1`, `sr` in the existing sample-rate options, `bd` in `{8,16}`, `p` object; then `setParams(clampSfxParams(p))`, `setSampleRate`, `setBitDepth`, `setStatus(t('status.shareLoaded'))`. Any error → `setStatus(t('status.shareInvalid'))`; never throw or blank the app. Do not re-apply on re-render (use an init ref).
+
+### 7.2 Required i18n keys (EN source text; ZH is yours)
+
+- `sections.effects.title` = "FX rack" · `sections.effects.description` = "Shape the raw chip tone into something that sits in a mix."
+- `fields.fxDrive.label` = "Drive" / hint "Soft saturation for weight and punch."
+- `fields.fxCrushRate.label` = "Crush rate" / hint "Sample-rate reduction for a gritty, digital edge."
+- `fields.fxCrushBits.label` = "Crush depth" / hint "Bit reduction; higher is dirtier."
+- `fields.fxTone.label` = "Tone tilt" / hint "Darken or brighten the whole effect."
+- `fields.fxDelayTime.label` = "Echo time" / hint "Spacing of the repeats."
+- `fields.fxDelayFeedback.label` = "Echo feedback" / hint "How many repeats survive."
+- `fields.fxDelayMix.label` = "Echo mix" / hint "How much echo you hear."
+- `fields.fxReverbSize.label` = "Space size" / hint "Small room to large hall."
+- `fields.fxReverbMix.label` = "Space mix" / hint "How much room sound you hear."
+- `effects.normalize.label` = "Peak normalize" / `effects.normalize.hint` = "Keeps the loudest peak under the ceiling so exports never clip."
+- `effects.bypass` = "Bypass FX" / `effects.bypassHint` = "Audition the raw engine output."
+- `effects.share` = "Copy share link" / `effects.shareHint` = "Copy a link that restores these exact settings."
+- `status.fxBypassed`, `status.shareCopied`, `status.shareCopyFailed`, `status.shareLoaded`, `status.shareInvalid`.
+
+### 7.3 Tests to add (component suite)
+
+- effects section renders 9 sliders + the normalize toggle.
+- toggling bypass sets `aria-pressed` and shows the bypassed status copy.
+- share button copies a `#s=` URL (mock `navigator.clipboard.writeText`) and a fresh mount with that hash restores `fxDelayMix` (assert the JSON panel value or the slider).
+- `fxNormalize` toggle flips the params (assert via JSON panel text).
+
+### 7.4 Theme
+
+Style `.fx-extras`, `.fx-toggle`, `.fx-bypass`, `.fx-share` (inline row, wrap at 720 px, pressed state = magenta border/glow, focus-visible ring). No other layout change is required; the effects section reuses `.control-section`, `.slider-grid`, `.slider-card`.

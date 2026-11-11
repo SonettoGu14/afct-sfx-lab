@@ -225,6 +225,51 @@ describe('preset catalog', () => {
   });
 });
 
+describe('fx integration', () => {
+  it('normalizes the default preset to the peak ceiling without clipping', () => {
+    const rendered = renderSfx(createSfxPreset('laserShoot'), { sampleRate: 22050, bitDepth: 16 });
+
+    expect(rendered.stats.peak).toBeLessThanOrEqual(0.9951);
+    expect(rendered.stats.clippedSamples).toBe(0);
+  });
+
+  it('still reports clipping when normalization is switched off', () => {
+    const rendered = renderSfx(
+      { ...DEFAULT_SFX_PARAMS, sustain: 0.6, masterVolume: 1, fxNormalize: 0 },
+      { sampleRate: 22050, bitDepth: 16 },
+    );
+
+    expect(rendered.stats.clippedSamples).toBeGreaterThan(0);
+    expect(rendered.stats.peak).toBe(1);
+  });
+
+  it('extends the buffer with an fx tail', () => {
+    const dry = renderSfx(
+      { ...DEFAULT_SFX_PARAMS, sustain: 0.2, decay: 0.2, fxDelayMix: 0, fxReverbMix: 0 },
+      { sampleRate: 22050, bitDepth: 16 },
+    );
+    const wet = renderSfx(
+      { ...DEFAULT_SFX_PARAMS, sustain: 0.2, decay: 0.2, fxDelayMix: 0.4, fxDelayFeedback: 0.5 },
+      { sampleRate: 22050, bitDepth: 16 },
+    );
+
+    expect(wet.stats.samples).toBeGreaterThan(dry.stats.samples);
+    expect(wet.stats.durationSeconds).toBeLessThanOrEqual(6);
+    expect(wet.stats.peak).toBeLessThanOrEqual(0.9951);
+  });
+
+  it('gives cinematic presets an audible fx tail', () => {
+    const whoosh = createSfxPreset('whoosh');
+    const rendered = renderSfx(whoosh, { sampleRate: 22050, bitDepth: 16 });
+
+    expect(whoosh.fxDelayMix).toBeGreaterThan(0);
+    expect(whoosh.fxReverbMix).toBeGreaterThan(0);
+    expect(rendered.stats.samples).toBeGreaterThan(
+      Math.round(rendered.stats.durationSeconds * 0) + 22050 * 0.8,
+    );
+  });
+});
+
 function readBlobAsArrayBuffer(blob: Blob): Promise<ArrayBuffer> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();

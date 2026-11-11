@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../App';
@@ -87,6 +87,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   localStorage.clear();
+  window.location.hash = '';
   writeText.mockClear();
   createObjectUrl.mockClear();
   revokeObjectUrl.mockClear();
@@ -275,6 +276,81 @@ describe('GameSfxGenerator', () => {
     const historySection = screen.getByRole('region', { name: 'Generation history' });
     const historyButtons = within(historySection).getAllByRole('button');
     expect(historyButtons.some((button) => button.getAttribute('aria-label')?.endsWith('export'))).toBe(true);
+  });
+
+  it('renders the FX rack with nine sliders and the extras row', async () => {
+    const user = userEvent.setup();
+    renderWorkbench();
+
+    const effectsToggle = screen.getByRole('button', { name: /FX rack/ });
+    expect(effectsToggle.getAttribute('aria-expanded')).toBe('false');
+
+    await user.click(effectsToggle);
+
+    const panel = document.getElementById('control-section-panel-effects');
+    expect(panel).not.toBeNull();
+    expect(panel?.querySelectorAll('input[type="range"]')).toHaveLength(9);
+    expect(screen.getByRole('button', { name: /Peak normalize/ })).not.toBeNull();
+    expect(screen.getByRole('button', { name: /Bypass FX/ })).not.toBeNull();
+    expect(screen.getByRole('button', { name: /Copy share link/ })).not.toBeNull();
+  });
+
+  it('bypasses the FX chain for the preview and restores it on toggle', async () => {
+    const user = userEvent.setup();
+    renderWorkbench();
+
+    await user.click(screen.getByRole('button', { name: /FX rack/ }));
+    const bypass = (): HTMLElement => screen.getByRole('button', { name: /Bypass FX/ });
+    expect(bypass().getAttribute('aria-pressed')).toBe('false');
+
+    await user.click(bypass());
+    expect(bypass().getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('status').textContent).toContain('FX bypassed');
+
+    await user.click(bypass());
+    expect(bypass().getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('status').textContent).not.toContain('FX bypassed');
+  });
+
+  it('toggles the peak normalize flag from the FX extras row', async () => {
+    const user = userEvent.setup();
+    renderWorkbench();
+
+    await user.click(screen.getByRole('button', { name: /FX rack/ }));
+    const normalize = (): HTMLElement => screen.getByRole('button', { name: /Peak normalize/ });
+    const jsonValue = (): string => (screen.getByLabelText('Parameter JSON editor') as HTMLTextAreaElement).value;
+
+    expect(normalize().getAttribute('aria-pressed')).toBe('true');
+    expect(jsonValue()).toContain('"fxNormalize": 1');
+
+    await user.click(normalize());
+    expect(normalize().getAttribute('aria-pressed')).toBe('false');
+    await waitFor(() => expect(jsonValue()).toContain('"fxNormalize": 0'));
+  });
+
+  it('copies a #s= share link and restores the settings from the hash on mount', async () => {
+    const user = userEvent.setup();
+    const clipboardWrite = vi.spyOn(navigator.clipboard, 'writeText');
+    renderWorkbench();
+
+    await user.click(screen.getByRole('button', { name: /FX rack/ }));
+    const sliders = (): NodeListOf<HTMLInputElement> => document.querySelectorAll<HTMLInputElement>('#control-section-panel-effects input[type="range"]');
+    fireEvent.change(sliders()[6], { target: { value: '0.6' } });
+
+    await user.click(screen.getByRole('button', { name: /Copy share link/ }));
+    await waitFor(() => expect(clipboardWrite).toHaveBeenCalled());
+    const copied = clipboardWrite.mock.calls[0]?.[0] as string;
+    expect(copied).toContain('#s=');
+    expect(screen.getByRole('status').textContent).toContain('Share link copied');
+    clipboardWrite.mockRestore();
+
+    cleanup();
+    window.location.hash = new URL(copied).hash;
+    renderWorkbench();
+    await user.click(screen.getByRole('button', { name: /FX rack/ }));
+
+    expect(sliders()[6].value).toBe('0.6');
+    expect(screen.getByRole('status').textContent).toContain('Settings loaded from the share link');
   });
 });
 

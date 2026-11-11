@@ -23,6 +23,7 @@ const HISTORY_STORAGE_KEY = 'afct-sfx-lab:history-v1';
 const SAMPLE_RATE_OPTIONS: SfxSampleRate[] = [44100, 22050, 11025, 8000];
 const BIT_DEPTH_OPTIONS: SfxBitDepth[] = [16, 8];
 const DEFAULT_EXPANDED_SECTIONS = {
+  effects: false,
   envelope: true,
   frequency: true,
   modulation: false,
@@ -30,6 +31,8 @@ const DEFAULT_EXPANDED_SECTIONS = {
   filter: false,
 } as const;
 const EXPORT_FORMATS = ['wav', 'json', 'mp3', 'ogg'] as const;
+const SHARE_HASH_PREFIX = '#s=';
+const SHARE_VERSION = 1;
 
 export type ExportFormat = (typeof EXPORT_FORMATS)[number];
 export type SavedSfxHistoryItem = {
@@ -44,9 +47,9 @@ export type SavedSfxHistoryItem = {
 };
 
 type ControlSectionId = keyof typeof DEFAULT_EXPANDED_SECTIONS;
-type SliderKey = {
+type SliderKey = Exclude<{
   [K in keyof SfxParams]: SfxParams[K] extends number ? K : never;
-}[keyof SfxParams];
+}[keyof SfxParams], 'fxNormalize'>;
 type Snapshot = Omit<SavedSfxHistoryItem, 'id' | 'savedAt'>;
 type SliderConfig = {
   key: SliderKey;
@@ -69,6 +72,20 @@ const WAVEFORM_OPTIONS: Array<{ value: SfxWaveform; glyph: string }> = [
   { value: 'noise', glyph: '::' },
 ];
 const CONTROL_SECTIONS: ControlSection[] = [
+  {
+    id: 'effects',
+    fields: [
+      { key: 'fxDrive', min: 0, max: 1 },
+      { key: 'fxCrushRate', min: 0, max: 1 },
+      { key: 'fxCrushBits', min: 0, max: 1 },
+      { key: 'fxTone', min: -1, max: 1, signed: true },
+      { key: 'fxDelayTime', min: 0, max: 1 },
+      { key: 'fxDelayFeedback', min: 0, max: 1 },
+      { key: 'fxDelayMix', min: 0, max: 1 },
+      { key: 'fxReverbSize', min: 0, max: 1 },
+      { key: 'fxReverbMix', min: 0, max: 1 },
+    ],
+  },
   {
     id: 'envelope',
     fields: [
@@ -129,6 +146,60 @@ function isRecord(value: unknown): value is Record<string, unknown> { return typ
 function isSampleRate(value: unknown): value is SfxSampleRate { return value === 44100 || value === 22050 || value === 11025 || value === 8000; }
 function isBitDepth(value: unknown): value is SfxBitDepth { return value === 16 || value === 8; }
 function isWaveform(value: unknown): value is SfxWaveform { return value === 'square' || value === 'sawtooth' || value === 'sine' || value === 'noise'; }
+function toBase64Url(json: string): string { return btoa(unescape(encodeURIComponent(json))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+function fromBase64Url(encoded: string): string | null {
+  try {
+    const base64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+    const binary = atob(padded);
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  } catch { return null; }
+}
+function encodeSharePayload(params: SfxParams, sampleRate: SfxSampleRate, bitDepth: SfxBitDepth): string {
+  return toBase64Url(JSON.stringify({ v: SHARE_VERSION, p: params, sr: sampleRate, bd: bitDepth }));
+}
+function decodeSharePayload(encoded: string): { params: SfxParams; sampleRate: SfxSampleRate; bitDepth: SfxBitDepth } | null {
+  const json = fromBase64Url(encoded);
+  if (json === null) return null;
+  try {
+    const parsed = JSON.parse(json) as unknown;
+    if (!isRecord(parsed)) return null;
+    if (parsed.v !== SHARE_VERSION) return null;
+    if (!isSampleRate(parsed.sr) || !isBitDepth(parsed.bd)) return null;
+    if (!isRecord(parsed.p)) return null;
+    return { params: clampSfxParams(parsed.p as Partial<SfxParams>), sampleRate: parsed.sr, bitDepth: parsed.bd };
+  } catch { return null; }
+}
+const FX_BYPASS_OVERRIDES: Partial<SfxParams> = {
+  fxDrive: 0,
+  fxCrushRate: 0,
+  fxCrushBits: 0,
+  fxTone: 0,
+  fxDelayMix: 0,
+  fxReverbMix: 0,
+  fxNormalize: 0,
+};
+function bypassFxChain(params: SfxParams): SfxParams { return { ...params, ...FX_BYPASS_OVERRIDES }; }
+async function copyTextWithFallback(text: string): Promise<boolean> {
+  try {
+    if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') throw new Error('clipboard-unavailable');
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.top = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.select();
+    let copied = false;
+    try { copied = document.execCommand('copy'); } catch { copied = false; }
+    document.body.removeChild(textarea);
+    return copied;
+  }
+}
 function formatPercent(value: number): string { return `${Math.round(value * 100)}%`; }
 function formatSignedPercent(value: number): string { return `${value > 0 ? '+' : ''}${Math.round(value * 100)}%`; }
 function formatBytes(value: number): string { if (value < 1024) return `${value} B`; if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`; return `${(value / (1024 * 1024)).toFixed(2)} MB`; }
@@ -340,14 +411,17 @@ export default function GameSfxGenerator() {
   const [editingHistoryId, setEditingHistoryId] = useState<string | null>(null);
   const [editingHistoryName, setEditingHistoryName] = useState('');
   const [expandedSections, setExpandedSections] = useState<Record<ControlSectionId, boolean>>({ ...DEFAULT_EXPANDED_SECTIONS });
+  const [bypassFx, setBypassFx] = useState(false);
 
   const waveformCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
   const autoPreviewTimerRef = useRef<number | null>(null);
   const paramsRef = useRef<SfxParams>(DEFAULT_SFX_PARAMS);
+  const shareInitRef = useRef(false);
 
-  const rendered = useMemo(() => renderSfx(params, { sampleRate, bitDepth }), [params, sampleRate, bitDepth]);
+  const previewParams = useMemo<SfxParams>(() => (bypassFx ? bypassFxChain(params) : params), [bypassFx, params]);
+  const rendered = useMemo(() => renderSfx(previewParams, { sampleRate, bitDepth }), [previewParams, sampleRate, bitDepth]);
   const currentSnapshot = useMemo<Snapshot>(() => ({ name: createSnapshotName(activePreset, t), presetId: activePreset, params, sampleRate, bitDepth, waveform: params.waveform }), [activePreset, params, sampleRate, bitDepth, t]);
   const isFootstepMode = params.engine === 'footsteppr';
 
@@ -355,6 +429,22 @@ export default function GameSfxGenerator() {
   useEffect(() => { paramsRef.current = params; }, [params]);
   useEffect(() => { setSerialized(serializeSfxParams(params)); }, [params]);
   useEffect(() => { saveHistoryToStorage(history); }, [history]);
+  useEffect(() => {
+    if (shareInitRef.current) return;
+    shareInitRef.current = true;
+    const hash = window.location.hash;
+    if (!hash.startsWith(SHARE_HASH_PREFIX)) return;
+    const decoded = decodeSharePayload(hash.slice(SHARE_HASH_PREFIX.length));
+    if (!decoded) {
+      setStatus({ key: 'status.shareInvalid' });
+      return;
+    }
+    setParams(decoded.params);
+    setSampleRate(decoded.sampleRate);
+    setBitDepth(decoded.bitDepth);
+    setActivePreset(null);
+    setStatus({ key: 'status.shareLoaded' });
+  }, []);
   useEffect(() => () => {
     if (autoPreviewTimerRef.current !== null) window.clearTimeout(autoPreviewTimerRef.current);
     try { sourceRef.current?.stop(); } catch {}
@@ -414,7 +504,7 @@ export default function GameSfxGenerator() {
     setActivePreset(null);
     commitParams(nextParams);
     queueAutoPreview(
-      { name: createSnapshotName(null, t), presetId: null, params: nextParams, sampleRate, bitDepth, waveform: nextParams.waveform },
+      { name: createSnapshotName(null, t), presetId: null, params: bypassFx ? bypassFxChain(nextParams) : nextParams, sampleRate, bitDepth, waveform: nextParams.waveform },
       key === 'waveform' ? { key: 'status.auditionWaveform', vars: { waveform: waveformLabel(t, nextParams.waveform) } } : { key: 'status.auditionTweaked' },
       key === 'waveform' ? 0 : 140,
     );
@@ -426,7 +516,7 @@ export default function GameSfxGenerator() {
     }
     commitParams(nextParams);
     queueAutoPreview(
-      { name: createSnapshotName(activePreset, t), presetId: activePreset, params: nextParams, sampleRate, bitDepth, waveform: nextParams.waveform },
+      { name: createSnapshotName(activePreset, t), presetId: activePreset, params: bypassFx ? bypassFxChain(nextParams) : nextParams, sampleRate, bitDepth, waveform: nextParams.waveform },
       { key: 'status.auditionFootstep', vars: { terrain: terrainLabel(t, nextParams.footstepTerrain) } },
       120,
     );
@@ -438,13 +528,21 @@ export default function GameSfxGenerator() {
     setActivePreset(preset);
     setStatus({ key: 'status.presetGenerated', vars: { preset: presetLabel(t, preset) } });
     queueAutoPreview(
-      { name: createSnapshotName(preset, t), presetId: preset, params: nextParams, sampleRate, bitDepth, waveform: nextParams.waveform },
+      { name: createSnapshotName(preset, t), presetId: preset, params: bypassFx ? bypassFxChain(nextParams) : nextParams, sampleRate, bitDepth, waveform: nextParams.waveform },
       { key: 'status.auditionPreset', vars: { preset: presetLabel(t, preset) } },
     );
   };
 
+  const toggleNormalizePeak = (): void => { commitParams({ ...paramsRef.current, fxNormalize: paramsRef.current.fxNormalize >= 1 ? 0 : 1 }); };
+  const toggleFxBypass = (): void => { setBypassFx((current) => !current); };
+  const copyShareLink = async (): Promise<void> => {
+    const url = `${window.location.origin}${window.location.pathname}${SHARE_HASH_PREFIX}${encodeSharePayload(paramsRef.current, sampleRate, bitDepth)}`;
+    const copied = await copyTextWithFallback(url);
+    setStatus({ key: copied ? 'status.shareCopied' : 'status.shareCopyFailed' });
+  };
+
   const handlePlayCurrent = async (): Promise<void> => {
-    try { await playSnapshot(currentSnapshot, { key: 'status.auditionCurrent' }); }
+    try { await playSnapshot({ ...currentSnapshot, params: previewParams }, { key: 'status.auditionCurrent' }); }
     catch { setStatus({ key: 'status.playFailed' }); }
   };
   const handlePlayHistory = async (item: SavedSfxHistoryItem): Promise<void> => {
@@ -638,6 +736,22 @@ export default function GameSfxGenerator() {
                             return <SliderField key={field.key} label={t(`fields.${field.key}.label`)} hint={t(`fields.${field.key}.hint`)} value={value} display={field.signed ? formatSignedPercent(value) : formatPercent(value)} min={field.min} max={field.max} step={field.step} onChange={(nextValue) => updateParam(field.key, nextValue)} />;
                           })}
                         </div>
+                        {section.id === 'effects' ? (
+                          <div className="fx-extras">
+                            <button type="button" className={`fx-toggle${params.fxNormalize === 1 ? ' is-active' : ''}`} aria-pressed={params.fxNormalize === 1} onClick={toggleNormalizePeak}>
+                              <span className="fx-extras__label">{t('effects.normalize.label')}</span>
+                              <small>{t('effects.normalize.hint')}</small>
+                            </button>
+                            <button type="button" className={`fx-bypass${bypassFx ? ' is-active' : ''}`} aria-pressed={bypassFx} onClick={toggleFxBypass}>
+                              <span className="fx-extras__label">{t('effects.bypass')}</span>
+                              <small>{t('effects.bypassHint')}</small>
+                            </button>
+                            <button type="button" className="fx-share" onClick={() => { void copyShareLink(); }}>
+                              <span className="fx-extras__label">{t('effects.share')}</span>
+                              <small>{t('effects.shareHint')}</small>
+                            </button>
+                          </div>
+                        ) : null}
                       </div>
                     </section>
                   );
@@ -689,7 +803,7 @@ export default function GameSfxGenerator() {
                 <ExportMenu menuId="current" label={t('export.currentLabel')} variant="console" isOpen={openExportMenu === 'current'} isExporting={exportingMenuId === 'current'} triggerClassName="export-menu__trigger export-menu__trigger--console" onToggle={toggleExportMenu} onExport={(format) => { void runExport(format, currentSnapshot, 'current', { key: 'status.sourceCurrent' }); }} />
               </div>
             </div>
-            <div className={`status-banner ${isPlaying ? 'status-banner--live' : ''}`} role="status">{t(status.key, status.vars)}</div>
+            <div className={`status-banner ${isPlaying ? 'status-banner--live' : ''}`} role="status">{bypassFx ? t('status.fxBypassed') : t(status.key, status.vars)}</div>
           </section>
 
           <section className="console-surface history-panel" aria-labelledby="history-title">

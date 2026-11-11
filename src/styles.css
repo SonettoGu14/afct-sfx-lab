@@ -1238,6 +1238,144 @@ textarea,
   box-shadow: none;
 }
 
+/* ==========================================================================
+   FX extras row (v1.1 effects rack)
+   Three label + hint buttons: normalize toggle, A/B bypass, share link.
+   ========================================================================== */
+
+.fx-extras {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.fx-toggle,
+.fx-bypass,
+.fx-share {
+  display: inline-flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 3px;
+  min-width: 0;
+  padding: 11px 13px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+  background: rgba(6, 12, 46, 0.72);
+  color: var(--ink-base);
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.fx-toggle:hover,
+.fx-bypass:hover,
+.fx-share:hover {
+  transform: translateY(-1px);
+  border-color: var(--line-cyan);
+  background: rgba(37, 197, 249, 0.09);
+  color: var(--ink-strong);
+}
+
+.fx-toggle:active,
+.fx-bypass:active,
+.fx-share:active {
+  transform: translateY(0);
+}
+
+.fx-extras__label {
+  color: inherit;
+  font-size: 0.84rem;
+  font-weight: 800;
+  letter-spacing: 0.005em;
+}
+
+.fx-toggle small,
+.fx-bypass small,
+.fx-share small {
+  color: var(--ink-dim);
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+/* Latched state: magenta edge + soft glow (aria-pressed and .is-active agree) */
+.fx-toggle[aria-pressed="true"],
+.fx-bypass[aria-pressed="true"],
+.fx-toggle.is-active,
+.fx-bypass.is-active {
+  border-color: rgba(206, 87, 193, 0.66);
+  background: rgba(206, 87, 193, 0.14);
+  color: var(--ink-strong);
+  box-shadow:
+    0 0 0 1px rgba(206, 87, 193, 0.22),
+    0 0 18px rgba(206, 87, 193, 0.18);
+}
+
+.fx-toggle[aria-pressed="true"]:hover,
+.fx-bypass[aria-pressed="true"]:hover,
+.fx-toggle.is-active:hover,
+.fx-bypass.is-active:hover {
+  border-color: rgba(206, 87, 193, 0.82);
+  background: rgba(206, 87, 193, 0.2);
+  box-shadow:
+    0 0 0 1px rgba(206, 87, 193, 0.3),
+    0 0 22px rgba(206, 87, 193, 0.24);
+}
+
+.fx-toggle[aria-pressed="true"] .fx-extras__label,
+.fx-bypass[aria-pressed="true"] .fx-extras__label,
+.fx-toggle.is-active .fx-extras__label,
+.fx-bypass.is-active .fx-extras__label {
+  color: #f4d6f1;
+}
+
+.fx-toggle[aria-pressed="true"] small,
+.fx-bypass[aria-pressed="true"] small,
+.fx-toggle.is-active small,
+.fx-bypass.is-active small {
+  color: var(--ink-soft);
+}
+
+.fx-toggle:focus-visible,
+.fx-bypass:focus-visible,
+.fx-share:focus-visible {
+  outline: 2px solid var(--accent-magenta);
+  outline-offset: 2px;
+}
+
+.fx-toggle:disabled,
+.fx-bypass:disabled,
+.fx-share:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+@media (max-width: 720px) {
+  .fx-extras {
+    flex-wrap: wrap;
+  }
+
+  .fx-toggle,
+  .fx-bypass,
+  .fx-share {
+    flex: 1 1 100%;
+  }
+}
+
 .preview-dock__footer {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

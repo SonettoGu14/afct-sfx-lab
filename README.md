@@ -2,7 +2,7 @@
 
 **A browser-based sound-design workbench built for the Academy of Film and Creative Technology (AFCT), Xi'an Jiaotong-Liverpool University.**
 
-Sketch, mutate and export retro/procedural sound effects without leaving the browser: 28 presets, two synthesis engines, eight footstep terrains, a full parameter console and four export formats. Everything renders locally — no audio ever leaves the page.
+Sketch, mutate and export retro/procedural sound effects without leaving the browser: 28 presets, two synthesis engines, eight footstep terrains, a full parameter console, a 10-knob FX rack and four export formats. Everything renders locally — no audio ever leaves the page.
 
 - Live: <https://sonettogu14.github.io/afct-sfx-lab/>
 - Based on: [mowangblog/game-sfx-generator-web](https://github.com/mowangblog/game-sfx-generator-web) (GPL-3.0)
@@ -12,6 +12,7 @@ Sketch, mutate and export retro/procedural sound effects without leaving the bro
 - **28 presets in five groups** — UI feedback, action/combat, cinematic transitions, footstep terrains and utility randomizers.
 - **Two engines** — an `sfxr`-style parameter synthesizer and a `footsteppr` footstep engine with 8 distinct terrains (snow, grass, dirt, gravel, mud, wood, metal, water).
 - **Full parameter console** — envelope, frequency, modulation, texture and filter sections, plus 4 waveforms, duty cycle, phaser, low/high-pass sweeps and master volume.
+- **FX rack** — drive, bitcrush, tone tilt, feedback echo and a small Schroeder reverb, with peak normalization, one-click A/B bypass and shareable `#s=` permalinks that restore exact settings.
 - **Live preview** — waveform canvas, peak/clipping stats, duration and byte size; sample rate 8k–44.1k, 8/16-bit.
 - **Auto-preview** — regenerates and plays ~140 ms after the last tweak, so you can hear while you drag.
 - **Export** — WAV, MP3, OGG and JSON parameter snapshots; batch-export the whole history as a ZIP in any format.
@@ -31,6 +32,24 @@ Sketch, mutate and export retro/procedural sound effects without leaving the bro
 
 Footstep presets use the `footsteppr` engine (heel / roll / ball / swiftness controls); every other preset uses the `sfxr` parameter synth.
 
+## FX rack (v1.1)
+
+The effects chain runs after synthesis, so every preset, footstep terrain and randomizer passes through it:
+
+| Control | What it does |
+| --- | --- |
+| Drive | `tanh` soft saturation for weight and punch. |
+| Crush rate / depth | Sample-and-hold decimation and bit reduction for digital grit. |
+| Tone tilt | One-knob tilt around 1 kHz: darken or brighten the whole effect. |
+| Echo time / feedback / mix | Feedback delay (0.03–0.40 s) with damped repeats. |
+| Space size / mix | Four damped combs + two allpasses; a small room to a large hall. |
+| Peak normalize | When on, scales the loudest peak to 0.995 **only if** it would clip — it is a safety ceiling, not loudness normalization, so `masterVolume` still means something. |
+
+The chain is fixed: drive → bitcrush → tone → delay → reverb → peak ceiling → 6 ms fade-out. Delay and reverb tails are appended to the buffer (0 ms when both mixes are zero, capped at 6 s total), so exported files keep their decay.
+
+- **Bypass FX** auditions the dry engine output without touching your settings or exports.
+- **Copy share link** encodes `{ version, params, sampleRate, bitDepth }` as base64url in the URL hash; opening the link restores the exact patch, FX included.
+
 ## Getting started
 
 ```bash
@@ -46,7 +65,8 @@ npm run preview  # preview the production build
 1. Pick a preset (or hit **Random** / **Mutate** to explore).
 2. Taste the result — it plays automatically; tweak sliders with the auto-preview on.
 3. Inspect the waveform, duration, sample rate and bit depth in the preview dock.
-4. Export WAV/MP3/OGG/JSON, or save the snapshot to the history panel for later.
+4. Open the **FX rack** to add weight, grit, echo or space; use **Bypass FX** to A/B the dry engine and **Copy share link** to keep a patch.
+5. Export WAV/MP3/OGG/JSON, or save the snapshot to the history panel for later.
 
 ## Project structure
 
@@ -54,7 +74,8 @@ npm run preview  # preview the production build
 src/
   i18n/                  # LanguageProvider, en.ts (source of truth), zh.ts
   lib/
-    sfx.ts               # SfxParams, presets, both engines, terrain DSP, WAV encoder
+    sfx.ts               # SfxParams, presets, both engines, terrain DSP, WAV encoder, FX integration
+    effects.ts           # drive, bitcrush, tone, delay, reverb, peak ceiling, tail math
     presetCatalog.ts     # the 28 presets grouped for the rack
     audioExport.ts       # MP3 (lamejs) / OGG (vorbis-encoder-js)
     zip.ts               # dependency-free ZIP writer for batch export
@@ -104,6 +125,8 @@ Any static host works, provided the base path matches the deployment URL.
 
 ## 中文说明
 
-AFCT SFX Lab 是为西交利物浦大学影视与创意科技学院（AFCT）改造的音效工作台：28 个预设、双引擎（sfxr 参数合成 + 8 种脚步地形）、中英双语界面、WAV/MP3/OGG/JSON 导出与本地历史记录，全部在浏览器内完成，不上传任何音频。
+AFCT SFX Lab 是为西交利物浦大学影视与创意科技学院（AFCT）改造的音效工作台：28 个预设、双引擎（sfxr 参数合成 + 8 种脚步地形）、10 旋钮效果器（过载、降比特、音色倾斜、延迟、混响、峰值归一化）、中英双语界面、WAV/MP3/OGG/JSON 导出与本地历史记录，全部在浏览器内完成，不上传任何音频。
+
+v1.1 的两个实用功能：**Bypass FX** 可在不改参数的情况下试听干声做 A/B；**Copy share link** 会把当前参数、采样率与位深编码进 URL（`#s=...`），打开链接即可原样恢复，方便在课堂或小组之间传递音色。
 
 本项目基于 [mowangblog/game-sfx-generator-web](https://github.com/mowangblog/game-sfx-generator-web) 改造，遵循 GPL-3.0-only 许可，并保留原项目署名。
