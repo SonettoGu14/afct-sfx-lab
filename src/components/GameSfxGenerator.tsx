@@ -1,10 +1,9 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, KeyboardEvent } from 'react';
 import { encodeMp3FromSamples, encodeOggFromSamples } from '../lib/audioExport';
 import { createZipArchive } from '../lib/zip';
 import {
   DEFAULT_SFX_PARAMS,
-  SFX_PRESET_ORDER,
   clampSfxParams,
   createSfxPreset,
   deserializeSfxParams,
@@ -12,14 +11,15 @@ import {
   renderSfx,
   serializeSfxParams,
   type SfxBitDepth,
-  type SfxFootstepTerrain,
   type SfxParams,
   type SfxPresetId,
   type SfxSampleRate,
   type SfxWaveform,
 } from '../lib/sfx';
+import { PRESET_CATEGORIES, isFootstepPresetId, isPresetId } from '../lib/presetCatalog';
+import { useI18n, type Translate, type TranslationKey } from '../i18n';
 
-const HISTORY_STORAGE_KEY = 'retro-sfx-history-v1';
+const HISTORY_STORAGE_KEY = 'afct-sfx-lab:history-v1';
 const SAMPLE_RATE_OPTIONS: SfxSampleRate[] = [44100, 22050, 11025, 8000];
 const BIT_DEPTH_OPTIONS: SfxBitDepth[] = [16, 8];
 const DEFAULT_EXPANDED_SECTIONS = {
@@ -29,14 +29,9 @@ const DEFAULT_EXPANDED_SECTIONS = {
   texture: false,
   filter: false,
 } as const;
-const EXPORT_OPTIONS = [
-  { value: 'wav', label: 'Download .wav' },
-  { value: 'json', label: 'Download .json' },
-  { value: 'mp3', label: 'Download .mp3' },
-  { value: 'ogg', label: 'Download .ogg' },
-] as const;
+const EXPORT_FORMATS = ['wav', 'json', 'mp3', 'ogg'] as const;
 
-export type ExportFormat = (typeof EXPORT_OPTIONS)[number]['value'];
+export type ExportFormat = (typeof EXPORT_FORMATS)[number];
 export type SavedSfxHistoryItem = {
   id: string;
   name: string;
@@ -49,11 +44,12 @@ export type SavedSfxHistoryItem = {
 };
 
 type ControlSectionId = keyof typeof DEFAULT_EXPANDED_SECTIONS;
+type SliderKey = {
+  [K in keyof SfxParams]: SfxParams[K] extends number ? K : never;
+}[keyof SfxParams];
 type Snapshot = Omit<SavedSfxHistoryItem, 'id' | 'savedAt'>;
 type SliderConfig = {
-  key: keyof SfxParams;
-  label: string;
-  hint: string;
+  key: SliderKey;
   min: number;
   max: number;
   step?: number;
@@ -61,103 +57,97 @@ type SliderConfig = {
 };
 type ControlSection = {
   id: ControlSectionId;
-  title: string;
-  description: string;
   fields: SliderConfig[];
 };
 type FootstepSliderKey = 'footstepHeel' | 'footstepRoll' | 'footstepBall' | 'footstepSwiftness';
+type StatusMessage = { key: TranslationKey; vars?: Record<string, string | number> };
 
-const WAVEFORM_OPTIONS: Array<{ value: SfxWaveform; label: string; detail: string; glyph: string }> = [
-  { value: 'square', label: '方波', detail: '街机味最强，适合金币、菜单和跳跃。', glyph: '[]' },
-  { value: 'sawtooth', label: '锯齿波', detail: '更亮更硬，适合激光和切割感。', glyph: '/|' },
-  { value: 'sine', label: '正弦波', detail: '更圆润干净，适合提示音。', glyph: '~' },
-  { value: 'noise', label: '噪声', detail: '颗粒更粗，适合爆炸和命中。', glyph: '::' },
+const WAVEFORM_OPTIONS: Array<{ value: SfxWaveform; glyph: string }> = [
+  { value: 'square', glyph: '[]' },
+  { value: 'sawtooth', glyph: '/|' },
+  { value: 'sine', glyph: '~' },
+  { value: 'noise', glyph: '::' },
 ];
-const WAVEFORM_LABELS: Record<SfxWaveform, string> = {
-  square: '方波',
-  sawtooth: '锯齿波',
-  sine: '正弦波',
-  noise: '噪声',
-};
-const FOOTSTEP_TERRAIN_LABELS: Record<SfxFootstepTerrain, string> = {
-  snow: '雪地',
-  grass: '草地',
-  dirt: '泥土',
-  gravel: '碎石',
-};
-const PRESET_LABELS: Record<SfxPresetId, string> = {
-  random: '随机', pickupCoin: '金币', laserShoot: '激光', explosion: '爆炸', powerup: '强化', hitHurt: '受击', jump: '跳跃', footstepSnow: '雪地', footstepGrass: '草地', footstepDirt: '泥土', footstepGravel: '碎石', click: '点击', blipSelect: '选择', synth: '合成', tone: '音调', mutate: '变异',
-};
-const PRESET_DETAILS: Record<SfxPresetId, string> = {
-  random: '探索灵感', pickupCoin: '奖励反馈', laserShoot: '射击脉冲', explosion: '爆裂冲击', powerup: '升级提示', hitHurt: '受击反馈', jump: '动作起跳', footstepSnow: '松软雪地脚步', footstepGrass: '草叶沙沙脚步', footstepDirt: '干土踩踏脚步', footstepGravel: '碎石颗粒脚步', click: '轻量点击', blipSelect: '菜单选择', synth: '电子音色', tone: '单音底色', mutate: '快速变体',
-};
-const PRESET_GLYPHS: Record<SfxPresetId, string> = {
-  random: 'RND', pickupCoin: 'COIN', laserShoot: 'LAS', explosion: 'EXP', powerup: 'UP', hitHurt: 'HIT', jump: 'JMP', footstepSnow: 'SNW', footstepGrass: 'GRS', footstepDirt: 'DRT', footstepGravel: 'GRV', click: 'CLK', blipSelect: 'SEL', synth: 'SYN', tone: 'TON', mutate: 'ALT',
-};
 const CONTROL_SECTIONS: ControlSection[] = [
-  { id: 'envelope', title: '轮廓', description: '控制起音、保持、冲击和衰减。', fields: [
-    { key: 'attack', label: '起音', hint: '数值越高，开头越柔和。', min: 0, max: 1 },
-    { key: 'sustain', label: '保持', hint: '决定声音主体持续多久。', min: 0, max: 1 },
-    { key: 'sustainPunch', label: '冲击', hint: '让保持阶段更有爆发感。', min: 0, max: 1 },
-    { key: 'decay', label: '衰减', hint: '控制尾音时长。', min: 0, max: 1 },
-  ]},
-  { id: 'frequency', title: '频率', description: '决定起始音高、下限与滑音。', fields: [
-    { key: 'startFrequency', label: '起始', hint: '越高越尖锐。', min: 0, max: 1 },
-    { key: 'minFrequency', label: '下限', hint: '避免下滑过低。', min: 0, max: 1 },
-    { key: 'slide', label: '滑音', hint: '负值向下滑，正值向上滑。', min: -1, max: 1, signed: true },
-    { key: 'deltaSlide', label: '滑音变化', hint: '让滑音加速或减速。', min: -1, max: 1, signed: true },
-  ]},
-  { id: 'modulation', title: '调制', description: '增加颤音与跳变。', fields: [
-    { key: 'vibratoDepth', label: '颤音深度', hint: '控制摆动幅度。', min: 0, max: 1 },
-    { key: 'vibratoSpeed', label: '颤音速度', hint: '控制摆动速度。', min: 0, max: 1 },
-    { key: 'changeAmount', label: '转调', hint: '中段音高跳变。', min: -1, max: 1, signed: true },
-    { key: 'changeSpeed', label: '转调时机', hint: '控制跳变发生的时点。', min: 0, max: 1 },
-  ]},
-  { id: 'texture', title: '质感', description: '调整占空比、重复与移相。', fields: [
-    { key: 'squareDuty', label: '占空比', hint: '主要影响方波厚度。', min: 0, max: 1 },
-    { key: 'dutySweep', label: '占空比扫动', hint: '让占空比随时间变化。', min: -1, max: 1, signed: true },
-    { key: 'repeatSpeed', label: '重复', hint: '周期性重置声音形态。', min: 0, max: 1 },
-    { key: 'phaserOffset', label: '移相偏移', hint: '增加科幻感。', min: -1, max: 1, signed: true },
-    { key: 'phaserSweep', label: '移相扫动', hint: '让相位随时间移动。', min: -1, max: 1, signed: true },
-  ]},
-  { id: 'filter', title: '滤波', description: '决定亮度、共振与低频清理。', fields: [
-    { key: 'lowPassCutoff', label: '低通', hint: '越低越暗。', min: 0, max: 1 },
-    { key: 'lowPassSweep', label: '低通扫动', hint: '让亮度随时间变化。', min: -1, max: 1, signed: true },
-    { key: 'lowPassResonance', label: '共振', hint: '在截止频率附近增加个性。', min: 0, max: 1 },
-    { key: 'highPassCutoff', label: '高通', hint: '切掉浑浊低频。', min: 0, max: 1 },
-    { key: 'highPassSweep', label: '高通扫动', hint: '让低频切除量变化。', min: -1, max: 1, signed: true },
-    { key: 'masterVolume', label: '音量', hint: '最终输出增益。', min: 0, max: 1 },
-  ]},
+  {
+    id: 'envelope',
+    fields: [
+      { key: 'attack', min: 0, max: 1 },
+      { key: 'sustain', min: 0, max: 1 },
+      { key: 'sustainPunch', min: 0, max: 1 },
+      { key: 'decay', min: 0, max: 1 },
+    ],
+  },
+  {
+    id: 'frequency',
+    fields: [
+      { key: 'startFrequency', min: 0, max: 1 },
+      { key: 'minFrequency', min: 0, max: 1 },
+      { key: 'slide', min: -1, max: 1, signed: true },
+      { key: 'deltaSlide', min: -1, max: 1, signed: true },
+    ],
+  },
+  {
+    id: 'modulation',
+    fields: [
+      { key: 'vibratoDepth', min: 0, max: 1 },
+      { key: 'vibratoSpeed', min: 0, max: 1 },
+      { key: 'changeAmount', min: -1, max: 1, signed: true },
+      { key: 'changeSpeed', min: 0, max: 1 },
+    ],
+  },
+  {
+    id: 'texture',
+    fields: [
+      { key: 'squareDuty', min: 0, max: 1 },
+      { key: 'dutySweep', min: -1, max: 1, signed: true },
+      { key: 'repeatSpeed', min: 0, max: 1 },
+      { key: 'phaserOffset', min: -1, max: 1, signed: true },
+      { key: 'phaserSweep', min: -1, max: 1, signed: true },
+    ],
+  },
+  {
+    id: 'filter',
+    fields: [
+      { key: 'lowPassCutoff', min: 0, max: 1 },
+      { key: 'lowPassSweep', min: -1, max: 1, signed: true },
+      { key: 'lowPassResonance', min: 0, max: 1 },
+      { key: 'highPassCutoff', min: 0, max: 1 },
+      { key: 'highPassSweep', min: -1, max: 1, signed: true },
+      { key: 'masterVolume', min: 0, max: 1 },
+    ],
+  },
 ];
-const FOOTSTEP_CONTROL_FIELDS: Array<{ key: FootstepSliderKey; label: string; hint: string }> = [
-  { key: 'footstepHeel', label: '后跟', hint: '控制落地第一下的撞击感。' },
-  { key: 'footstepRoll', label: '滚动', hint: '控制脚掌从后往前滚动的比例。' },
-  { key: 'footstepBall', label: '前掌', hint: '控制前掌离地前的刮擦与压感。' },
-  { key: 'footstepSwiftness', label: '步速', hint: '越高越短促，越低越拖曳。' },
+const FOOTSTEP_CONTROL_FIELDS: FootstepSliderKey[] = [
+  'footstepHeel',
+  'footstepRoll',
+  'footstepBall',
+  'footstepSwiftness',
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null; }
 function isSampleRate(value: unknown): value is SfxSampleRate { return value === 44100 || value === 22050 || value === 11025 || value === 8000; }
 function isBitDepth(value: unknown): value is SfxBitDepth { return value === 16 || value === 8; }
 function isWaveform(value: unknown): value is SfxWaveform { return value === 'square' || value === 'sawtooth' || value === 'sine' || value === 'noise'; }
-function isPresetId(value: unknown): value is SfxPresetId { return typeof value === 'string' && SFX_PRESET_ORDER.includes(value as SfxPresetId); }
 function formatPercent(value: number): string { return `${Math.round(value * 100)}%`; }
 function formatSignedPercent(value: number): string { return `${value > 0 ? '+' : ''}${Math.round(value * 100)}%`; }
 function formatBytes(value: number): string { if (value < 1024) return `${value} B`; if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`; return `${(value / (1024 * 1024)).toFixed(2)} MB`; }
 function formatSampleRateChip(value: SfxSampleRate): string { return value >= 1000 ? `${value / 1000}k` : `${value}`; }
 function formatSampleRateMeta(value: SfxSampleRate): string { return value % 1000 === 0 ? `${value / 1000}kHz` : `${(value / 1000).toFixed(2)}kHz`; }
 function pad2(value: number): string { return value.toString().padStart(2, '0'); }
-function formatHistoryDetail(savedAt: string): string { const date = new Date(savedAt); return Number.isNaN(date.getTime()) ? '保存时间未知' : `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`; }
-function isFootstepPreset(presetId: SfxPresetId | null): presetId is 'footstepSnow' | 'footstepGrass' | 'footstepDirt' | 'footstepGravel' { return presetId === 'footstepSnow' || presetId === 'footstepGrass' || presetId === 'footstepDirt' || presetId === 'footstepGravel'; }
-function getPreviewMeta(params: SfxParams, sampleRate: SfxSampleRate, bitDepth: SfxBitDepth): string {
+function formatHistoryDetail(savedAt: string, t: Translate): string { const date = new Date(savedAt); return Number.isNaN(date.getTime()) ? t('history.unknownTime') : `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`; }
+function presetLabel(t: Translate, presetId: SfxPresetId): string { return t(`presets.${presetId}.label`); }
+function waveformLabel(t: Translate, waveform: SfxWaveform): string { return t(`waveforms.${waveform}.label`); }
+function terrainLabel(t: Translate, terrain: SfxParams['footstepTerrain']): string { return t(`terrain.${terrain}`); }
+function getPreviewMeta(params: SfxParams, sampleRate: SfxSampleRate, bitDepth: SfxBitDepth, t: Translate): string {
   return params.engine === 'footsteppr'
-    ? `脚步 · ${FOOTSTEP_TERRAIN_LABELS[params.footstepTerrain]} · ${formatSampleRateMeta(sampleRate)} · ${bitDepth} bit`
-    : `${WAVEFORM_LABELS[params.waveform]} · ${formatSampleRateMeta(sampleRate)} · ${bitDepth} bit`;
+    ? t('preview.metaFootstep', { terrain: terrainLabel(t, params.footstepTerrain), rate: formatSampleRateMeta(sampleRate), bitDepth })
+    : t('preview.metaWaveform', { waveform: waveformLabel(t, params.waveform), rate: formatSampleRateMeta(sampleRate), bitDepth });
 }
 function createId(): string { return typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `sfx-${Date.now()}-${Math.random().toString(16).slice(2)}`; }
-function createDefaultHistoryName(presetId: SfxPresetId | null, savedAt: string): string { const date = new Date(savedAt); const label = presetId ? PRESET_LABELS[presetId] : '自定义'; return `${label} / ${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`; }
-function createSnapshotName(presetId: SfxPresetId | null): string { return presetId ? PRESET_LABELS[presetId] : 'custom'; }
-function sanitizeFileStem(value: string): string { return value.trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, '-').replace(/-+/g, '-') || 'retro-sfx'; }
+function createDefaultHistoryName(presetId: SfxPresetId | null, savedAt: string, t: Translate): string { const date = new Date(savedAt); const label = presetId ? presetLabel(t, presetId) : t('common.custom'); return `${label} / ${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`; }
+function createSnapshotName(presetId: SfxPresetId | null, t: Translate): string { return presetId ? presetLabel(t, presetId) : t('common.custom'); }
+function sanitizeFileStem(value: string): string { return value.trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, '-').replace(/-+/g, '-') || 'afct-sfx'; }
 function downloadBlob(blob: Blob, fileName: string): void { const objectUrl = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = objectUrl; link.download = fileName; link.click(); window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000); }
 function drawWaveform(canvas: HTMLCanvasElement | null, samples: Float32Array): void {
   if (!canvas) return;
@@ -168,19 +158,55 @@ function drawWaveform(canvas: HTMLCanvasElement | null, samples: Float32Array): 
   const context = canvas.getContext('2d');
   if (!context) return;
   context.clearRect(0, 0, width, height);
-  const gradient = context.createLinearGradient(0, 0, width, height);
-  gradient.addColorStop(0, '#f4e6c2');
-  gradient.addColorStop(1, '#cfe6ea');
-  context.fillStyle = gradient;
+
+  const background = context.createLinearGradient(0, 0, 0, height);
+  background.addColorStop(0, '#050b2e');
+  background.addColorStop(1, '#030723');
+  context.fillStyle = background;
   context.fillRect(0, 0, width, height);
-  context.strokeStyle = 'rgba(34, 58, 78, 0.14)';
+
+  context.strokeStyle = 'rgba(37, 197, 249, 0.09)';
   context.lineWidth = 1;
   context.beginPath();
-  context.moveTo(0, height / 2);
-  context.lineTo(width, height / 2);
+  for (let x = 0; x <= width; x += 36) {
+    context.moveTo(x + 0.5, 0);
+    context.lineTo(x + 0.5, height);
+  }
+  for (let y = 0; y <= height; y += 36) {
+    context.moveTo(0, y + 0.5);
+    context.lineTo(width, y + 0.5);
+  }
   context.stroke();
-  context.strokeStyle = '#126f83';
+
+  context.strokeStyle = 'rgba(206, 87, 193, 0.42)';
+  context.lineWidth = 1;
+  context.beginPath();
+  context.moveTo(0, height / 2 + 0.5);
+  context.lineTo(width, height / 2 + 0.5);
+  context.stroke();
+
+  let peak = 0;
+  for (let index = 0; index < samples.length; index += 1) {
+    peak = Math.max(peak, Math.abs(samples[index] ?? 0));
+  }
+  if (peak > 0) {
+    context.save();
+    context.strokeStyle = 'rgba(206, 87, 193, 0.35)';
+    context.setLineDash([6, 6]);
+    for (const value of [peak, -peak]) {
+      context.beginPath();
+      context.moveTo(0, ((1 - value) * height) / 2);
+      context.lineTo(width, ((1 - value) * height) / 2);
+      context.stroke();
+    }
+    context.restore();
+  }
+
+  context.save();
+  context.strokeStyle = '#25c5f9';
   context.lineWidth = 2;
+  context.shadowColor = 'rgba(37, 197, 249, 0.55)';
+  context.shadowBlur = 6;
   context.beginPath();
   const samplesPerPixel = Math.max(1, Math.floor(samples.length / width));
   for (let x = 0; x < width; x += 1) {
@@ -199,9 +225,10 @@ function drawWaveform(canvas: HTMLCanvasElement | null, samples: Float32Array): 
     context.lineTo(x, y2);
   }
   context.stroke();
+  context.restore();
 }
 
-function parseHistoryItem(value: unknown): SavedSfxHistoryItem | null {
+function parseHistoryItem(value: unknown, t: Translate): SavedSfxHistoryItem | null {
   if (!isRecord(value)) return null;
   const params = clampSfxParams(isRecord(value.params) ? (value.params as Partial<SfxParams>) : DEFAULT_SFX_PARAMS);
   const waveform = isWaveform(value.waveform) ? value.waveform : params.waveform;
@@ -209,18 +236,18 @@ function parseHistoryItem(value: unknown): SavedSfxHistoryItem | null {
   const sampleRate = isSampleRate(value.sampleRate) ? value.sampleRate : 44100;
   const bitDepth = isBitDepth(value.bitDepth) ? value.bitDepth : 16;
   const savedAt = typeof value.savedAt === 'string' ? value.savedAt : new Date().toISOString();
-  const name = typeof value.name === 'string' && value.name.trim() ? value.name.trim() : createDefaultHistoryName(presetId, savedAt);
+  const name = typeof value.name === 'string' && value.name.trim() ? value.name.trim() : createDefaultHistoryName(presetId, savedAt, t);
   const id = typeof value.id === 'string' && value.id.trim() ? value.id : createId();
   return { id, name, savedAt, presetId, params: { ...params, waveform }, sampleRate, bitDepth, waveform };
 }
-function loadHistoryFromStorage(): SavedSfxHistoryItem[] {
+function loadHistoryFromStorage(t: Translate): SavedSfxHistoryItem[] {
   if (typeof window === 'undefined') return [];
   try {
     const raw = window.localStorage.getItem(HISTORY_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
-    return parsed.map(parseHistoryItem).filter((item): item is SavedSfxHistoryItem => item !== null);
+    return parsed.map((value) => parseHistoryItem(value, t)).filter((item): item is SavedSfxHistoryItem => item !== null);
   } catch {
     return [];
   }
@@ -229,9 +256,9 @@ function saveHistoryToStorage(history: SavedSfxHistoryItem[]): void {
   if (typeof window === 'undefined') return;
   try { window.localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history)); } catch {}
 }
-function createHistoryItem(snapshot: Snapshot): SavedSfxHistoryItem {
+function createHistoryItem(snapshot: Snapshot, t: Translate): SavedSfxHistoryItem {
   const savedAt = new Date().toISOString();
-  return { id: createId(), name: createDefaultHistoryName(snapshot.presetId, savedAt), savedAt, presetId: snapshot.presetId, params: clampSfxParams(snapshot.params), sampleRate: snapshot.sampleRate, bitDepth: snapshot.bitDepth, waveform: snapshot.waveform };
+  return { id: createId(), name: createDefaultHistoryName(snapshot.presetId, savedAt, t), savedAt, presetId: snapshot.presetId, params: clampSfxParams(snapshot.params), sampleRate: snapshot.sampleRate, bitDepth: snapshot.bitDepth, waveform: snapshot.waveform };
 }
 function toSnapshot(item: SavedSfxHistoryItem): Snapshot { return { name: item.name, presetId: item.presetId, params: item.params, sampleRate: item.sampleRate, bitDepth: item.bitDepth, waveform: item.waveform }; }
 async function exportSnapshot(format: ExportFormat, snapshot: Snapshot): Promise<Blob> {
@@ -267,28 +294,29 @@ function SliderField(props: { label: string; hint: string; value: number; displa
 
 function ExportMenu(props: { menuId: string; label: string; triggerText?: string; variant?: 'console' | 'inline'; isOpen: boolean; isExporting: boolean; triggerClassName: string; onToggle: (menuId: string) => void; onExport: (format: ExportFormat) => void }) {
   const { menuId, label, triggerText, variant = 'inline', isOpen, isExporting, triggerClassName, onToggle, onExport } = props;
+  const { t } = useI18n();
   return (
     <div className={`export-menu ${isOpen ? 'is-open' : ''}`}>
       <button className={triggerClassName} type="button" aria-haspopup="menu" aria-expanded={isOpen} aria-label={label} disabled={isExporting} onClick={() => onToggle(menuId)}>
         {variant === 'console' ? (
           <>
             <span className="export-menu__copy">
-              <span className="export-menu__eyebrow">{isExporting ? 'Encoding' : 'File Output'}</span>
-              <span className="export-menu__title">{isExporting ? '导出中...' : '导出音效'}</span>
+              <span className="export-menu__eyebrow">{isExporting ? t('export.encoding') : t('export.eyebrow')}</span>
+              <span className="export-menu__title">{isExporting ? t('export.exporting') : t('export.title')}</span>
             </span>
             <span className="export-menu__caret export-menu__caret--console" aria-hidden="true">▾</span>
           </>
         ) : (
           <>
-            <span>{isExporting ? '导出中...' : (triggerText ?? '导出')}</span>
+            <span>{isExporting ? t('export.exporting') : (triggerText ?? t('export.trigger'))}</span>
             <span className="export-menu__caret" aria-hidden="true">▾</span>
           </>
         )}
       </button>
       {isOpen ? (
-        <div className="export-menu__list" role="menu" aria-label={`${label} 菜单`}>
-          {EXPORT_OPTIONS.map((option) => (
-            <button key={option.value} className="export-menu__item" type="button" role="menuitem" onClick={() => onExport(option.value)}>{option.label}</button>
+        <div className="export-menu__list" role="menu" aria-label={t('export.menuLabel', { label })}>
+          {EXPORT_FORMATS.map((format) => (
+            <button key={format} className="export-menu__item" type="button" role="menuitem" onClick={() => onExport(format)}>{t(`export.${format}`)}</button>
           ))}
         </div>
       ) : null}
@@ -297,14 +325,16 @@ function ExportMenu(props: { menuId: string; label: string; triggerText?: string
 }
 
 export default function GameSfxGenerator() {
+  const { language, t } = useI18n();
+  const locale = language === 'zh' ? 'zh-CN' : 'en-US';
   const [params, setParams] = useState<SfxParams>(DEFAULT_SFX_PARAMS);
   const [sampleRate, setSampleRate] = useState<SfxSampleRate>(44100);
   const [bitDepth, setBitDepth] = useState<SfxBitDepth>(16);
   const [activePreset, setActivePreset] = useState<SfxPresetId | null>(null);
   const [serialized, setSerialized] = useState(() => serializeSfxParams(DEFAULT_SFX_PARAMS));
-  const [status, setStatus] = useState('已加载默认音色。先选一个预设，再从轮廓和频率开始微调。');
+  const [status, setStatus] = useState<StatusMessage>({ key: 'status.ready' });
   const [isPlaying, setIsPlaying] = useState(false);
-  const [history, setHistory] = useState<SavedSfxHistoryItem[]>(() => loadHistoryFromStorage());
+  const [history, setHistory] = useState<SavedSfxHistoryItem[]>(() => loadHistoryFromStorage(t));
   const [openExportMenu, setOpenExportMenu] = useState<string | null>(null);
   const [exportingMenuId, setExportingMenuId] = useState<string | null>(null);
   const [editingHistoryId, setEditingHistoryId] = useState<string | null>(null);
@@ -318,7 +348,7 @@ export default function GameSfxGenerator() {
   const paramsRef = useRef<SfxParams>(DEFAULT_SFX_PARAMS);
 
   const rendered = useMemo(() => renderSfx(params, { sampleRate, bitDepth }), [params, sampleRate, bitDepth]);
-  const currentSnapshot = useMemo<Snapshot>(() => ({ name: createSnapshotName(activePreset), presetId: activePreset, params, sampleRate, bitDepth, waveform: params.waveform }), [activePreset, params, sampleRate, bitDepth]);
+  const currentSnapshot = useMemo<Snapshot>(() => ({ name: createSnapshotName(activePreset, t), presetId: activePreset, params, sampleRate, bitDepth, waveform: params.waveform }), [activePreset, params, sampleRate, bitDepth, t]);
   const isFootstepMode = params.engine === 'footsteppr';
 
   useEffect(() => { drawWaveform(waveformCanvasRef.current, rendered.samples); }, [rendered.samples]);
@@ -337,7 +367,7 @@ export default function GameSfxGenerator() {
     if (audioContextRef.current.state === 'suspended') await audioContextRef.current.resume();
     return audioContextRef.current;
   };
-  const playSnapshot = async (snapshot: Snapshot, message: string): Promise<void> => {
+  const playSnapshot = async (snapshot: Snapshot, message: StatusMessage): Promise<void> => {
     const audioContext = await ensureAudioContext();
     const nextRendered = renderSfx(snapshot.params, { sampleRate: snapshot.sampleRate, bitDepth: snapshot.bitDepth });
     try { sourceRef.current?.stop(); } catch {}
@@ -357,15 +387,15 @@ export default function GameSfxGenerator() {
     setIsPlaying(true);
     setStatus(message);
   };
-  const queueAutoPreview = (snapshot: Snapshot, message: string, delay = 0): void => {
+  const queueAutoPreview = (snapshot: Snapshot, message: StatusMessage, delay = 0): void => {
     if (autoPreviewTimerRef.current !== null) {
       window.clearTimeout(autoPreviewTimerRef.current);
       autoPreviewTimerRef.current = null;
     }
 
     const runPreview = (): void => {
-      void playSnapshot(snapshot, message).catch((error) => {
-        setStatus(error instanceof Error ? error.message : '自动试听失败。');
+      void playSnapshot(snapshot, message).catch(() => {
+        setStatus({ key: 'status.autoPreviewFailed' });
       });
     };
 
@@ -384,22 +414,20 @@ export default function GameSfxGenerator() {
     setActivePreset(null);
     commitParams(nextParams);
     queueAutoPreview(
-      { name: createSnapshotName(null), presetId: null, params: nextParams, sampleRate, bitDepth, waveform: nextParams.waveform },
-      key === 'waveform' ? `正在试听${WAVEFORM_LABELS[nextParams.waveform]}波形。` : '正在试听调整后的音效。',
+      { name: createSnapshotName(null, t), presetId: null, params: nextParams, sampleRate, bitDepth, waveform: nextParams.waveform },
+      key === 'waveform' ? { key: 'status.auditionWaveform', vars: { waveform: waveformLabel(t, nextParams.waveform) } } : { key: 'status.auditionTweaked' },
       key === 'waveform' ? 0 : 140,
     );
   };
   const updateFootstepParam = (key: FootstepSliderKey, value: number): void => {
     const nextParams = clampSfxParams({ ...paramsRef.current, engine: 'footsteppr', [key]: value });
-    if (isFootstepPreset(activePreset)) {
-      setActivePreset(activePreset);
-    } else {
+    if (activePreset === null || !isFootstepPresetId(activePreset)) {
       setActivePreset(null);
     }
     commitParams(nextParams);
     queueAutoPreview(
-      { name: createSnapshotName(activePreset), presetId: activePreset, params: nextParams, sampleRate, bitDepth, waveform: nextParams.waveform },
-      `正在试听${FOOTSTEP_TERRAIN_LABELS[nextParams.footstepTerrain]}脚步。`,
+      { name: createSnapshotName(activePreset, t), presetId: activePreset, params: nextParams, sampleRate, bitDepth, waveform: nextParams.waveform },
+      { key: 'status.auditionFootstep', vars: { terrain: terrainLabel(t, nextParams.footstepTerrain) } },
       120,
     );
   };
@@ -408,28 +436,28 @@ export default function GameSfxGenerator() {
     const nextParams = createSfxPreset(preset, paramsRef.current);
     commitParams(nextParams);
     setActivePreset(preset);
-    setStatus(`已生成「${PRESET_LABELS[preset]}」预设。`);
+    setStatus({ key: 'status.presetGenerated', vars: { preset: presetLabel(t, preset) } });
     queueAutoPreview(
-      { name: createSnapshotName(preset), presetId: preset, params: nextParams, sampleRate, bitDepth, waveform: nextParams.waveform },
-      `正在试听「${PRESET_LABELS[preset]}」预设。`,
+      { name: createSnapshotName(preset, t), presetId: preset, params: nextParams, sampleRate, bitDepth, waveform: nextParams.waveform },
+      { key: 'status.auditionPreset', vars: { preset: presetLabel(t, preset) } },
     );
   };
 
   const handlePlayCurrent = async (): Promise<void> => {
-    try { await playSnapshot(currentSnapshot, '正在试听当前音效。'); }
-    catch (error) { setStatus(error instanceof Error ? error.message : '播放失败。'); }
+    try { await playSnapshot(currentSnapshot, { key: 'status.auditionCurrent' }); }
+    catch { setStatus({ key: 'status.playFailed' }); }
   };
   const handlePlayHistory = async (item: SavedSfxHistoryItem): Promise<void> => {
-    try { await playSnapshot(toSnapshot(item), `正在试听历史「${item.name}」。`); }
-    catch (error) { setStatus(error instanceof Error ? error.message : '历史试听失败。'); }
+    try { await playSnapshot(toSnapshot(item), { key: 'status.auditionHistory', vars: { name: item.name } }); }
+    catch { setStatus({ key: 'status.historyPlayFailed' }); }
   };
   const handleCopyJson = async (): Promise<void> => {
     try {
       if (!navigator.clipboard) throw new Error('clipboard-unavailable');
       await navigator.clipboard.writeText(serialized);
-      setStatus('参数 JSON 已复制到剪贴板。');
+      setStatus({ key: 'status.jsonCopied' });
     } catch {
-      setStatus('复制失败。');
+      setStatus({ key: 'status.copyFailed' });
     }
   };
   const handleApplyJson = (): void => {
@@ -437,18 +465,18 @@ export default function GameSfxGenerator() {
       const nextParams = deserializeSfxParams(serialized);
       setActivePreset(null);
       commitParams(nextParams);
-      setStatus('参数 JSON 已应用到工作台。');
+      setStatus({ key: 'status.jsonApplied' });
     } catch (error) {
-      setStatus(error instanceof Error ? `JSON 无效：${error.message}` : 'JSON 无效。');
+      setStatus(error instanceof Error ? { key: 'status.jsonInvalid', vars: { message: error.message } } : { key: 'status.jsonInvalidPlain' });
     }
   };
   const handleJsonChange = (event: ChangeEvent<HTMLTextAreaElement>): void => setSerialized(event.target.value);
   const saveCurrentToHistory = (): void => {
-    const nextItem = createHistoryItem(currentSnapshot);
+    const nextItem = createHistoryItem(currentSnapshot, t);
     setHistory((current) => [nextItem, ...current]);
     setEditingHistoryId(nextItem.id);
     setEditingHistoryName(nextItem.name);
-    setStatus(`已保存到生成历史：「${nextItem.name}」。`);
+    setStatus({ key: 'status.historySaved', vars: { name: nextItem.name } });
   };
   const applyHistoryToWorkbench = (item: SavedSfxHistoryItem): void => {
     const nextParams = clampSfxParams({ ...item.params, waveform: item.waveform });
@@ -457,7 +485,7 @@ export default function GameSfxGenerator() {
     setBitDepth(item.bitDepth);
     setActivePreset(item.presetId);
     setSerialized(serializeSfxParams(nextParams));
-    setStatus(`已应用回工作台：「${item.name}」。`);
+    setStatus({ key: 'status.historyApplied', vars: { name: item.name } });
     setOpenExportMenu(null);
   };
   const deleteHistoryItem = (item: SavedSfxHistoryItem): void => {
@@ -469,7 +497,7 @@ export default function GameSfxGenerator() {
     if (openExportMenu === `history-${item.id}`) {
       setOpenExportMenu(null);
     }
-    setStatus(`已删除历史记录：「${item.name}」。`);
+    setStatus({ key: 'status.historyDeleted', vars: { name: item.name } });
   };
   const commitHistoryRename = (): void => {
     if (!editingHistoryId) return;
@@ -482,97 +510,113 @@ export default function GameSfxGenerator() {
     if (event.key === 'Escape') { setEditingHistoryId(null); setEditingHistoryName(''); }
   };
   const toggleExportMenu = (menuId: string): void => setOpenExportMenu((current) => current === menuId ? null : menuId);
-  const runExport = async (format: ExportFormat, snapshot: Snapshot, menuId: string, sourceLabel: string): Promise<void> => {
+  const runExport = async (format: ExportFormat, snapshot: Snapshot, menuId: string, source: StatusMessage): Promise<void> => {
+    const sourceLabel = t(source.key, source.vars);
     setExportingMenuId(menuId);
-    setStatus(`正在导出 ${sourceLabel} 的 .${format} 文件。`);
+    setStatus({ key: 'status.exporting', vars: { source: sourceLabel, format } });
     try {
       const blob = await exportSnapshot(format, snapshot);
       downloadBlob(blob, `${sanitizeFileStem(snapshot.name)}.${format}`);
-      setStatus(`${sourceLabel} 已导出为 .${format}。`);
+      setStatus({ key: 'status.exported', vars: { source: sourceLabel, format } });
       setOpenExportMenu(null);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : `导出 .${format} 失败。`);
+    } catch {
+      setStatus({ key: 'status.exportFailed', vars: { format } });
     } finally {
       setExportingMenuId(null);
     }
   };
   const runHistoryArchiveExport = async (format: ExportFormat): Promise<void> => {
     if (history.length === 0) {
-      setStatus('生成历史里还没有可导出的记录。');
+      setStatus({ key: 'status.historyEmptyExport' });
       return;
     }
 
     const menuId = 'history-all';
     setExportingMenuId(menuId);
-    setStatus(`正在打包全部历史记录的 .${format} ZIP。`);
+    setStatus({ key: 'status.zipping', vars: { format } });
     try {
       const blob = await exportHistoryArchive(format, history);
-      downloadBlob(blob, `retro-sfx-history-${format}.zip`);
-      setStatus(`全部历史记录已导出为 .${format} ZIP。`);
+      downloadBlob(blob, `afct-sfx-history-${format}.zip`);
+      setStatus({ key: 'status.zipExported', vars: { format } });
       setOpenExportMenu(null);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : `全部导出 .${format} 失败。`);
+    } catch {
+      setStatus({ key: 'status.zipFailed', vars: { format } });
     } finally {
       setExportingMenuId(null);
     }
   };
 
   return (
-    <section className="workbench-card" aria-label="音效工作台">
+    <section className="workbench-card" aria-label={t('app.workbenchLabel')}>
       <div className="workbench-layout">
         <div className="editor-column">
           <section className="console-surface preset-rack" aria-labelledby="preset-strip-title">
             <div className="panel-head">
-              <div><p className="section-kicker">Preset Rack</p><h3 id="preset-strip-title">音效预设</h3></div>
-              <span>先选方向，再微调参数。</span>
+              <div><p className="section-kicker">{t('presets.kicker')}</p><h3 id="preset-strip-title">{t('presets.title')}</h3></div>
+              <span>{t('presets.description')}</span>
             </div>
-            <div className="preset-strip" role="toolbar" aria-label="音效预设">
-              {SFX_PRESET_ORDER.map((preset) => (
-                <button key={preset} type="button" aria-pressed={activePreset === preset} className={`preset-button ${preset === 'mutate' ? 'preset-button--mutate' : ''} ${activePreset === preset ? 'is-active' : ''}`} onClick={() => handlePreset(preset)}>
-                  <span className="preset-button__glyph" aria-hidden="true">{PRESET_GLYPHS[preset]}</span>
-                  <span className="preset-button__copy"><span className="preset-button__label">{PRESET_LABELS[preset]}</span><small>{PRESET_DETAILS[preset]}</small></span>
-                </button>
+            <div className="preset-groups" role="group" aria-label={t('presets.groupsLabel')}>
+              {PRESET_CATEGORIES.map((category) => (
+                <section className="preset-group" key={category.id} data-preset-group={category.id}>
+                  <div className="preset-group__head">
+                    <span className="preset-group__label">{t(`presetCategories.${category.id}`)}</span>
+                    <span className="preset-group__count">{category.presets.length}</span>
+                  </div>
+                  <div className="preset-strip" role="toolbar" aria-label={t(`presetCategories.${category.id}`)}>
+                    {category.presets.map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        data-preset-id={preset}
+                        aria-pressed={activePreset === preset}
+                        className={`preset-button ${preset === 'mutate' ? 'preset-button--mutate' : ''} ${activePreset === preset ? 'is-active' : ''}`}
+                        onClick={() => handlePreset(preset)}
+                      >
+                        <span className="preset-button__glyph" aria-hidden="true">{t(`presets.${preset}.glyph`)}</span>
+                        <span className="preset-button__copy"><span className="preset-button__label">{t(`presets.${preset}.label`)}</span><small>{t(`presets.${preset}.detail`)}</small></span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
               ))}
             </div>
           </section>
 
           {isFootstepMode ? (
-            <>
-              <section className="console-surface control-section is-open" aria-labelledby="footstep-controls-title">
-                <div className="control-section__toggle">
-                  <div><p className="section-kicker">Footsteps</p><h3 id="footstep-controls-title">脚步动态</h3><span>调整落地节奏、重心推进和步伐速度。</span></div>
+            <section className="console-surface control-section is-open" aria-labelledby="footstep-controls-title">
+              <div className="control-section__toggle">
+                <div><p className="section-kicker">{t('sections.footstepKicker')}</p><h3 id="footstep-controls-title">{t('sections.footstepTitle')}</h3><span>{t('sections.footstepDescription')}</span></div>
+              </div>
+              <div>
+                <div className="slider-grid">
+                  {FOOTSTEP_CONTROL_FIELDS.map((key) => (
+                    <SliderField
+                      key={key}
+                      label={t(`fields.${key}.label`)}
+                      hint={t(`fields.${key}.hint`)}
+                      value={params[key]}
+                      display={formatPercent(params[key])}
+                      min={0}
+                      max={1}
+                      onChange={(nextValue) => updateFootstepParam(key, nextValue)}
+                    />
+                  ))}
                 </div>
-                <div>
-                  <div className="slider-grid">
-                    {FOOTSTEP_CONTROL_FIELDS.map((field) => (
-                      <SliderField
-                        key={field.key}
-                        label={field.label}
-                        hint={field.hint}
-                        value={params[field.key]}
-                        display={formatPercent(params[field.key])}
-                        min={0}
-                        max={1}
-                        onChange={(nextValue) => updateFootstepParam(field.key, nextValue)}
-                      />
-                    ))}
-                  </div>
-                </div>
-              </section>
-            </>
+              </div>
+            </section>
           ) : (
             <>
               <section className="console-surface waveform-bay" aria-labelledby="waveform-panel-title">
                 <div className="panel-head">
-                  <div><p className="section-kicker">Waveform</p><h3 id="waveform-panel-title">基础波形</h3></div>
-                  <span>先选底色，再修细节。</span>
+                  <div><p className="section-kicker">{t('waveforms.kicker')}</p><h3 id="waveform-panel-title">{t('waveforms.title')}</h3></div>
+                  <span>{t('waveforms.description')}</span>
                 </div>
                 <div className="waveform-grid">
                   {WAVEFORM_OPTIONS.map((option) => (
                     <label key={option.value} className={`mode-pill ${params.waveform === option.value ? 'is-active' : ''}`}>
-                      <input type="radio" name="sfx-waveform" checked={params.waveform === option.value} aria-label={option.label} onChange={() => updateParam('waveform', option.value)} />
+                      <input type="radio" name="sfx-waveform" checked={params.waveform === option.value} aria-label={waveformLabel(t, option.value)} onChange={() => updateParam('waveform', option.value)} />
                       <div className="mode-pill__badge" aria-hidden="true">{option.glyph}</div>
-                      <div className="mode-pill__copy"><span className="mode-pill__label">{option.label}</span><small>{option.detail}</small></div>
+                      <div className="mode-pill__copy"><span className="mode-pill__label">{waveformLabel(t, option.value)}</span><small>{t(`waveforms.${option.value}.detail`)}</small></div>
                     </label>
                   ))}
                 </div>
@@ -584,14 +628,14 @@ export default function GameSfxGenerator() {
                   return (
                     <section key={section.id} className={`console-surface control-section ${expanded ? 'is-open' : ''}`}>
                       <button className="control-section__toggle" type="button" aria-expanded={expanded} aria-controls={`control-section-panel-${section.id}`} onClick={() => toggleSection(section.id)}>
-                        <div><p className="section-kicker">Control Group</p><h3>{section.title}</h3><span>{section.description}</span></div>
-                        <span className="control-section__state">{expanded ? '收起' : '展开'}</span>
+                        <div><p className="section-kicker">{t('sections.kicker')}</p><h3>{t(`sections.${section.id}.title`)}</h3><span>{t(`sections.${section.id}.description`)}</span></div>
+                        <span className="control-section__state">{expanded ? t('controls.collapse') : t('controls.expand')}</span>
                       </button>
                       <div id={`control-section-panel-${section.id}`} hidden={!expanded}>
                         <div className="slider-grid">
                           {section.fields.map((field) => {
-                            const value = params[field.key] as number;
-                            return <SliderField key={field.key} label={field.label} hint={field.hint} value={value} display={field.signed ? formatSignedPercent(value) : formatPercent(value)} min={field.min} max={field.max} step={field.step} onChange={(nextValue) => updateParam(field.key, nextValue)} />;
+                            const value = params[field.key];
+                            return <SliderField key={field.key} label={t(`fields.${field.key}.label`)} hint={t(`fields.${field.key}.hint`)} value={value} display={field.signed ? formatSignedPercent(value) : formatPercent(value)} min={field.min} max={field.max} step={field.step} onChange={(nextValue) => updateParam(field.key, nextValue)} />;
                           })}
                         </div>
                       </div>
@@ -606,19 +650,19 @@ export default function GameSfxGenerator() {
         <aside className="preview-column">
           <section className={`console-surface preview-dock ${isPlaying ? 'is-live' : ''}`} aria-labelledby="preview-title">
             <div className="panel-head preview-dock__head">
-              <div><p className="section-kicker">Live Monitor</p><h3 id="preview-title">预览</h3></div>
-              <span className="preview-dock__meta">{getPreviewMeta(params, sampleRate, bitDepth)}</span>
+              <div><p className="section-kicker">{t('preview.kicker')}</p><h3 id="preview-title">{t('preview.title')}</h3></div>
+              <span className="preview-dock__meta">{getPreviewMeta(params, sampleRate, bitDepth, t)}</span>
             </div>
-            <div className="waveform-frame"><canvas ref={waveformCanvasRef} className="waveform-canvas" /></div>
+            <div className="waveform-frame"><canvas ref={waveformCanvasRef} className="waveform-canvas" role="img" aria-label={t('preview.waveformAria')} /></div>
             <div className="stats-grid">
-              <div className="stat-card"><span>时长</span><strong>{rendered.stats.durationSeconds.toFixed(2)}s</strong></div>
-              <div className="stat-card"><span>采样数</span><strong>{rendered.stats.samples.toLocaleString()}</strong></div>
-              <div className="stat-card"><span>峰值</span><strong>{rendered.stats.peak.toFixed(2)}</strong></div>
-              <div className="stat-card"><span>削波数</span><strong>{rendered.stats.clippedSamples.toLocaleString()}</strong></div>
+              <div className="stat-card"><span>{t('preview.stats.duration')}</span><strong>{t('preview.durationValue', { value: rendered.stats.durationSeconds.toFixed(2) })}</strong></div>
+              <div className="stat-card"><span>{t('preview.stats.samples')}</span><strong>{rendered.stats.samples.toLocaleString(locale)}</strong></div>
+              <div className="stat-card"><span>{t('preview.stats.peak')}</span><strong>{rendered.stats.peak.toFixed(2)}</strong></div>
+              <div className="stat-card"><span>{t('preview.stats.clipped')}</span><strong>{rendered.stats.clippedSamples.toLocaleString(locale)}</strong></div>
             </div>
             <div className="preview-options">
               <div className="inline-options">
-                <span>采样率</span>
+                <span>{t('preview.sampleRate')}</span>
                 <div className="chip-group">
                   {SAMPLE_RATE_OPTIONS.map((option) => (
                     <button key={option} className={`segmented-button ${sampleRate === option ? 'is-active' : ''}`} type="button" onClick={() => setSampleRate(option)}>{formatSampleRateChip(option)}</button>
@@ -626,40 +670,40 @@ export default function GameSfxGenerator() {
                 </div>
               </div>
               <div className="inline-options">
-                <span>位深</span>
+                <span>{t('preview.bitDepth')}</span>
                 <div className="chip-group">
                   {BIT_DEPTH_OPTIONS.map((option) => (
-                    <button key={option} className={`segmented-button ${bitDepth === option ? 'is-active' : ''}`} type="button" onClick={() => setBitDepth(option)}>{option} bit</button>
+                    <button key={option} className={`segmented-button ${bitDepth === option ? 'is-active' : ''}`} type="button" onClick={() => setBitDepth(option)}>{t('common.bitValue', { value: option })}</button>
                   ))}
                 </div>
               </div>
             </div>
             <div className="monitor-actions">
-              <button className="primary-button play-button" type="button" aria-label={isPlaying ? '重新播放音效' : '播放音效'} onClick={() => { void handlePlayCurrent(); }}>
+              <button className="primary-button play-button" type="button" aria-label={isPlaying ? t('controls.replay') : t('controls.play')} onClick={() => { void handlePlayCurrent(); }}>
                 <span className="play-button__icon" aria-hidden="true">{isPlaying ? '↻' : '▶'}</span>
-                <span className="play-button__copy"><span className="play-button__label">{isPlaying ? '重新播放' : '播放音效'}</span><small>{isPlaying ? '从头试听当前音效' : '立即试听当前音效'}</small></span>
+                <span className="play-button__copy"><span className="play-button__label">{isPlaying ? t('controls.replay') : t('controls.play')}</span><small>{isPlaying ? t('controls.replayHint') : t('controls.playHint')}</small></span>
               </button>
-              <button className="secondary-button secondary-button--teal save-button" type="button" aria-label="保存当前音效" onClick={saveCurrentToHistory}>保存到历史</button>
+              <button className="secondary-button secondary-button--teal save-button" type="button" aria-label={t('controls.saveToHistory')} onClick={saveCurrentToHistory}>{t('controls.saveToHistory')}</button>
               <div className="preview-dock__footer">
-                <div className="option-card option-card--monitor"><span>预计导出体积</span><strong>{formatBytes(rendered.stats.estimatedByteSize)}</strong></div>
-                <ExportMenu menuId="current" label="当前音效导出" variant="console" isOpen={openExportMenu === 'current'} isExporting={exportingMenuId === 'current'} triggerClassName="export-menu__trigger export-menu__trigger--console" onToggle={toggleExportMenu} onExport={(format) => { void runExport(format, currentSnapshot, 'current', '当前音效'); }} />
+                <div className="option-card option-card--monitor"><span>{t('preview.estimatedSize')}</span><strong>{formatBytes(rendered.stats.estimatedByteSize)}</strong></div>
+                <ExportMenu menuId="current" label={t('export.currentLabel')} variant="console" isOpen={openExportMenu === 'current'} isExporting={exportingMenuId === 'current'} triggerClassName="export-menu__trigger export-menu__trigger--console" onToggle={toggleExportMenu} onExport={(format) => { void runExport(format, currentSnapshot, 'current', { key: 'status.sourceCurrent' }); }} />
               </div>
             </div>
-            <div className={`status-banner ${isPlaying ? 'status-banner--live' : ''}`} role="status">{status}</div>
+            <div className={`status-banner ${isPlaying ? 'status-banner--live' : ''}`} role="status">{t(status.key, status.vars)}</div>
           </section>
 
           <section className="console-surface history-panel" aria-labelledby="history-title">
             <div className="panel-head history-panel__head">
-              <div><p className="section-kicker">History</p><h3 id="history-title">生成历史</h3></div>
+              <div><p className="section-kicker">{t('history.kicker')}</p><h3 id="history-title">{t('history.title')}</h3></div>
               <div className="history-panel__tools">
-                <span>{history.length > 0 ? `已保存 ${history.length} 条记录` : '保存后会显示在这里。'}</span>
+                <span>{history.length > 0 ? t('history.count', { count: history.length }) : t('history.hint')}</span>
                 {history.length > 0 ? (
-                  <ExportMenu menuId="history-all" label="全部历史导出" triggerText="全部导出" variant="inline" isOpen={openExportMenu === 'history-all'} isExporting={exportingMenuId === 'history-all'} triggerClassName="ghost-button export-menu__trigger export-menu__trigger--inline" onToggle={toggleExportMenu} onExport={(format) => { void runHistoryArchiveExport(format); }} />
+                  <ExportMenu menuId="history-all" label={t('export.historyAllLabel')} triggerText={t('export.all')} variant="inline" isOpen={openExportMenu === 'history-all'} isExporting={exportingMenuId === 'history-all'} triggerClassName="ghost-button export-menu__trigger export-menu__trigger--inline" onToggle={toggleExportMenu} onExport={(format) => { void runHistoryArchiveExport(format); }} />
                 ) : null}
               </div>
             </div>
             {history.length === 0 ? (
-              <div className="history-empty" data-testid="history-empty-state"><strong>还没有保存记录</strong><p>点击“保存到历史”后，会显示在这里。</p></div>
+              <div className="history-empty" data-testid="history-empty-state"><strong>{t('history.emptyTitle')}</strong><p>{t('history.emptyHint')}</p></div>
             ) : (
               <div className="history-list">
                 {history.map((item) => {
@@ -669,23 +713,23 @@ export default function GameSfxGenerator() {
                     <article key={item.id} className="history-card">
                       <div className="history-card__head">
                         {isEditing ? (
-                          <input className="history-card__input" autoFocus aria-label="历史记录名称" value={editingHistoryName} onChange={(event) => setEditingHistoryName(event.target.value)} onBlur={commitHistoryRename} onKeyDown={handleHistoryRenameKeyDown} />
+                          <input className="history-card__input" autoFocus aria-label={t('history.renameAria')} value={editingHistoryName} onChange={(event) => setEditingHistoryName(event.target.value)} onBlur={commitHistoryRename} onKeyDown={handleHistoryRenameKeyDown} />
                         ) : (
                           <button className="history-card__title" type="button" onClick={() => { setEditingHistoryId(item.id); setEditingHistoryName(item.name); }}>{item.name}</button>
                         )}
-                        <button className="ghost-button history-card__rename" type="button" onClick={() => deleteHistoryItem(item)}>删除</button>
+                        <button className="ghost-button history-card__rename" type="button" onClick={() => deleteHistoryItem(item)}>{t('history.delete')}</button>
                       </div>
-                      <div className="history-card__meta">{formatHistoryDetail(item.savedAt)}</div>
+                      <div className="history-card__meta">{formatHistoryDetail(item.savedAt, t)}</div>
                       <div className="history-card__chips">
-                        <span className="history-chip">{item.presetId ? PRESET_LABELS[item.presetId] : '自定义'}</span>
-                        <span className="history-chip">{item.params.engine === 'footsteppr' ? FOOTSTEP_TERRAIN_LABELS[item.params.footstepTerrain] : WAVEFORM_LABELS[item.waveform]}</span>
+                        <span className="history-chip">{item.presetId ? presetLabel(t, item.presetId) : t('common.custom')}</span>
+                        <span className="history-chip">{item.params.engine === 'footsteppr' ? terrainLabel(t, item.params.footstepTerrain) : waveformLabel(t, item.waveform)}</span>
                         <span className="history-chip">{formatSampleRateMeta(item.sampleRate)}</span>
-                        <span className="history-chip">{item.bitDepth} bit</span>
+                        <span className="history-chip">{t('common.bitValue', { value: item.bitDepth })}</span>
                       </div>
                       <div className="history-card__actions">
-                        <button className="ghost-button" type="button" onClick={() => applyHistoryToWorkbench(item)}>应用</button>
-                        <button className="ghost-button" type="button" onClick={() => { void handlePlayHistory(item); }}>播放</button>
-                        <ExportMenu menuId={menuId} label={`${item.name} 导出`} variant="inline" isOpen={openExportMenu === menuId} isExporting={exportingMenuId === menuId} triggerClassName="ghost-button export-menu__trigger export-menu__trigger--inline" onToggle={toggleExportMenu} onExport={(format) => { void runExport(format, toSnapshot(item), menuId, `历史记录「${item.name}」`); }} />
+                        <button className="ghost-button" type="button" onClick={() => applyHistoryToWorkbench(item)}>{t('history.apply')}</button>
+                        <button className="ghost-button" type="button" onClick={() => { void handlePlayHistory(item); }}>{t('history.play')}</button>
+                        <ExportMenu menuId={menuId} label={t('export.historyItemLabel', { name: item.name })} variant="inline" isOpen={openExportMenu === menuId} isExporting={exportingMenuId === menuId} triggerClassName="ghost-button export-menu__trigger export-menu__trigger--inline" onToggle={toggleExportMenu} onExport={(format) => { void runExport(format, toSnapshot(item), menuId, { key: 'status.sourceHistory', vars: { name: item.name } }); }} />
                       </div>
                     </article>
                   );
@@ -696,14 +740,14 @@ export default function GameSfxGenerator() {
 
           <section className="console-surface advanced-editor-panel" aria-labelledby="json-panel-title">
             <div className="panel-head">
-              <div><p className="section-kicker">Advanced</p><h3 id="json-panel-title">参数 JSON</h3></div>
-              <span>复制、粘贴或直接编辑参数。</span>
+              <div><p className="section-kicker">{t('advanced.kicker')}</p><h3 id="json-panel-title">{t('json.title')}</h3></div>
+              <span>{t('json.description')}</span>
             </div>
             <div className="advanced-editor">
-              <textarea id="sfx-json-editor" className="json-editor" aria-label="参数 JSON 编辑器" value={serialized} onChange={handleJsonChange} />
+              <textarea id="sfx-json-editor" className="json-editor" aria-label={t('json.editorAria')} value={serialized} onChange={handleJsonChange} />
               <div className="json-actions">
-                <button className="ghost-button" type="button" onClick={() => { void handleCopyJson(); }}>复制 JSON</button>
-                <button className="ghost-button" type="button" onClick={handleApplyJson}>应用 JSON</button>
+                <button className="ghost-button" type="button" onClick={() => { void handleCopyJson(); }}>{t('json.copy')}</button>
+                <button className="ghost-button" type="button" onClick={handleApplyJson}>{t('json.apply')}</button>
               </div>
             </div>
           </section>

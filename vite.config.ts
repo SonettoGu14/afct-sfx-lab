@@ -6,7 +6,7 @@ import react from '@vitejs/plugin-react';
 const rootDir = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig(({ command }) => ({
-  base: command === 'build' ? '/game-sfx-generator-web/' : '/',
+  base: command === 'build' ? '/afct-sfx-lab/' : '/',
   plugins: [react()],
   test: {
     environment: 'jsdom',

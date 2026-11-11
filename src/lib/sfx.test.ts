@@ -1,10 +1,13 @@
-﻿import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_SFX_PARAMS,
+  SFX_PRESET_ORDER,
+  createSfxPreset,
   deserializeSfxParams,
   encodeSfxWav,
   renderSfx,
 } from './sfx';
+import type { SfxFootstepTerrain, SfxPresetId } from './sfx';
 
 describe('sfx renderer', () => {
   it('renders a bounded sample buffer with stats', () => {
@@ -119,6 +122,106 @@ describe('sfx renderer', () => {
     expect(params.attack).toBe(1);
     expect(params.slide).toBe(-1);
     expect(params.masterVolume).toBe(1);
+  });
+});
+
+describe('preset catalog', () => {
+  it('exposes 28 unique presets that all render bounded audio', () => {
+    expect(SFX_PRESET_ORDER).toHaveLength(28);
+    expect(new Set(SFX_PRESET_ORDER).size).toBe(SFX_PRESET_ORDER.length);
+
+    for (const preset of SFX_PRESET_ORDER) {
+      const rendered = renderSfx(createSfxPreset(preset), { sampleRate: 22050, bitDepth: 16 });
+
+      expect(rendered.samples.length).toBe(rendered.stats.samples);
+      expect(rendered.stats.samples).toBeGreaterThan(0);
+      expect(rendered.stats.peak).toBeLessThanOrEqual(1);
+      expect(rendered.stats.peak).toBeGreaterThan(0.001);
+
+      for (let index = 0; index < rendered.samples.length; index += 97) {
+        expect(Number.isFinite(rendered.samples[index] ?? 0)).toBe(true);
+      }
+    }
+  });
+
+  it('renders the new cinematic presets as long sweeps', () => {
+    const cinematicPresets: SfxPresetId[] = ['whoosh', 'riser', 'impact', 'glitch'];
+
+    for (const preset of cinematicPresets) {
+      const rendered = renderSfx(createSfxPreset(preset), { sampleRate: 22050, bitDepth: 16 });
+      expect(rendered.stats.durationSeconds).toBeGreaterThan(0.3);
+    }
+
+    expect(
+      renderSfx(createSfxPreset('whoosh'), { sampleRate: 22050, bitDepth: 16 }).stats.durationSeconds,
+    ).toBeGreaterThan(0.8);
+    expect(
+      renderSfx(createSfxPreset('riser'), { sampleRate: 22050, bitDepth: 16 }).stats.durationSeconds,
+    ).toBeGreaterThan(0.8);
+  });
+
+  it('marks every footstep preset as the footsteppr engine with its own terrain', () => {
+    const footstepTerrains: Array<[SfxPresetId, SfxFootstepTerrain]> = [
+      ['footstepSnow', 'snow'],
+      ['footstepGrass', 'grass'],
+      ['footstepDirt', 'dirt'],
+      ['footstepGravel', 'gravel'],
+      ['footstepMud', 'mud'],
+      ['footstepWood', 'wood'],
+      ['footstepMetal', 'metal'],
+      ['footstepWater', 'water'],
+    ];
+
+    for (const [preset, terrain] of footstepTerrains) {
+      const params = createSfxPreset(preset);
+      expect(params.engine).toBe('footsteppr');
+      expect(params.footstepTerrain).toBe(terrain);
+    }
+  });
+
+  it('renders all eight footstep terrains as distinct bounded output', () => {
+    const terrains: SfxFootstepTerrain[] = [
+      'snow',
+      'grass',
+      'dirt',
+      'gravel',
+      'mud',
+      'wood',
+      'metal',
+      'water',
+    ];
+    const rendered = new Map<SfxFootstepTerrain, Float32Array>();
+
+    for (const terrain of terrains) {
+      const result = renderSfx(
+        {
+          ...DEFAULT_SFX_PARAMS,
+          engine: 'footsteppr',
+          footstepTerrain: terrain,
+          footstepHeel: 0.55,
+          footstepRoll: 0.55,
+          footstepBall: 0.5,
+          footstepSwiftness: 0.55,
+        },
+        { sampleRate: 22050, bitDepth: 16 },
+      );
+
+      expect(result.stats.peak).toBeLessThanOrEqual(1);
+      expect(result.stats.peak).toBeGreaterThan(0.02);
+      rendered.set(terrain, result.samples);
+    }
+
+    for (let left = 0; left < terrains.length; left += 1) {
+      for (let right = left + 1; right < terrains.length; right += 1) {
+        const leftSamples = rendered.get(terrains[left]) ?? new Float32Array();
+        const rightSamples = rendered.get(terrains[right]) ?? new Float32Array();
+        const difference = Array.from({ length: 512 }).reduce<number>((sum, _, index) => (
+          sum + Math.abs((leftSamples[index] ?? 0) - (rightSamples[index] ?? 0))
+        ), 0);
+
+        expect(difference, `${terrains[left]} vs ${terrains[right]}`).toBeGreaterThan(0.5);
+      }
+    }
   });
 });
 

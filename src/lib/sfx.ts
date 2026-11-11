@@ -1,24 +1,44 @@
 export type SfxWaveform = 'square' | 'sawtooth' | 'sine' | 'noise';
 export type SfxEngine = 'sfxr' | 'footsteppr';
-export type SfxFootstepTerrain = 'snow' | 'grass' | 'dirt' | 'gravel';
+export type SfxFootstepTerrain =
+  | 'snow'
+  | 'grass'
+  | 'dirt'
+  | 'gravel'
+  | 'mud'
+  | 'wood'
+  | 'metal'
+  | 'water';
 
 export type SfxPresetId =
   | 'random'
+  | 'mutate'
+  | 'click'
+  | 'blipSelect'
+  | 'hoverTick'
+  | 'notifyPop'
+  | 'successChime'
+  | 'errorBuzz'
   | 'pickupCoin'
   | 'laserShoot'
   | 'explosion'
   | 'powerup'
   | 'hitHurt'
   | 'jump'
+  | 'whoosh'
+  | 'riser'
+  | 'impact'
+  | 'glitch'
+  | 'synth'
+  | 'tone'
   | 'footstepSnow'
   | 'footstepGrass'
   | 'footstepDirt'
   | 'footstepGravel'
-  | 'click'
-  | 'blipSelect'
-  | 'synth'
-  | 'tone'
-  | 'mutate';
+  | 'footstepMud'
+  | 'footstepWood'
+  | 'footstepMetal'
+  | 'footstepWater';
 
 export type SfxParams = {
   engine: SfxEngine;
@@ -109,21 +129,33 @@ export const DEFAULT_SFX_PARAMS: SfxParams = {
 
 export const SFX_PRESET_ORDER: SfxPresetId[] = [
   'random',
+  'mutate',
+  'click',
+  'blipSelect',
+  'hoverTick',
+  'notifyPop',
+  'successChime',
+  'errorBuzz',
   'pickupCoin',
   'laserShoot',
   'explosion',
   'powerup',
   'hitHurt',
   'jump',
+  'whoosh',
+  'riser',
+  'impact',
+  'glitch',
+  'synth',
+  'tone',
   'footstepSnow',
   'footstepGrass',
   'footstepDirt',
   'footstepGravel',
-  'click',
-  'blipSelect',
-  'synth',
-  'tone',
-  'mutate',
+  'footstepMud',
+  'footstepWood',
+  'footstepMetal',
+  'footstepWater',
 ];
 
 const PHASER_BUFFER_SIZE = 2048;
@@ -442,6 +474,93 @@ export function createSfxPreset(
         highPassSweep: randomRange(0, 0.05),
         masterVolume: 0.5,
       });
+    case 'footstepMud':
+      return clampSfxParams({
+        engine: 'footsteppr',
+        waveform: 'noise',
+        footstepTerrain: 'mud',
+        footstepHeel: randomRange(0.4, 0.58),
+        footstepRoll: randomRange(0.58, 0.76),
+        footstepBall: randomRange(0.3, 0.48),
+        footstepSwiftness: randomRange(0.24, 0.38),
+        attack: randomRange(0.01, 0.04),
+        sustain: randomRange(0.14, 0.24),
+        sustainPunch: randomRange(0.18, 0.36),
+        decay: randomRange(0.18, 0.3),
+        startFrequency: randomRange(0.08, 0.16),
+        minFrequency: randomRange(0.01, 0.05),
+        slide: randomRange(-0.24, -0.06),
+        lowPassCutoff: randomRange(0.16, 0.3),
+        lowPassSweep: randomRange(-0.1, 0.02),
+        lowPassResonance: randomRange(0.2, 0.38),
+        highPassCutoff: randomRange(0.01, 0.06),
+        masterVolume: 0.5,
+      });
+    case 'footstepWood':
+      return clampSfxParams({
+        engine: 'footsteppr',
+        waveform: Math.random() > 0.8 ? 'square' : 'noise',
+        footstepTerrain: 'wood',
+        footstepHeel: randomRange(0.6, 0.8),
+        footstepRoll: randomRange(0.3, 0.5),
+        footstepBall: randomRange(0.42, 0.6),
+        footstepSwiftness: randomRange(0.56, 0.74),
+        attack: 0,
+        sustain: randomRange(0.03, 0.09),
+        sustainPunch: randomRange(0.3, 0.5),
+        decay: randomRange(0.06, 0.12),
+        startFrequency: randomRange(0.3, 0.46),
+        minFrequency: randomRange(0.12, 0.24),
+        slide: randomRange(-0.14, 0),
+        lowPassCutoff: randomRange(0.6, 0.82),
+        lowPassResonance: randomRange(0.12, 0.28),
+        highPassCutoff: randomRange(0.1, 0.2),
+        masterVolume: 0.48,
+      });
+    case 'footstepMetal':
+      return clampSfxParams({
+        engine: 'footsteppr',
+        waveform: 'noise',
+        footstepTerrain: 'metal',
+        footstepHeel: randomRange(0.52, 0.7),
+        footstepRoll: randomRange(0.4, 0.58),
+        footstepBall: randomRange(0.5, 0.68),
+        footstepSwiftness: randomRange(0.52, 0.68),
+        attack: 0,
+        sustain: randomRange(0.06, 0.12),
+        sustainPunch: randomRange(0.26, 0.46),
+        decay: randomRange(0.1, 0.16),
+        startFrequency: randomRange(0.56, 0.74),
+        minFrequency: randomRange(0.2, 0.34),
+        slide: randomRange(-0.08, 0.06),
+        phaserOffset: randomRange(-0.14, 0.14),
+        lowPassCutoff: randomRange(0.78, 0.96),
+        lowPassResonance: randomRange(0.3, 0.5),
+        highPassCutoff: randomRange(0.24, 0.38),
+        masterVolume: 0.52,
+      });
+    case 'footstepWater':
+      return clampSfxParams({
+        engine: 'footsteppr',
+        waveform: 'noise',
+        footstepTerrain: 'water',
+        footstepHeel: randomRange(0.44, 0.62),
+        footstepRoll: randomRange(0.5, 0.68),
+        footstepBall: randomRange(0.46, 0.64),
+        footstepSwiftness: randomRange(0.4, 0.56),
+        attack: 0,
+        sustain: randomRange(0.1, 0.2),
+        sustainPunch: randomRange(0.2, 0.4),
+        decay: randomRange(0.14, 0.24),
+        startFrequency: randomRange(0.34, 0.5),
+        minFrequency: randomRange(0.08, 0.18),
+        slide: randomRange(-0.1, 0.06),
+        lowPassCutoff: randomRange(0.5, 0.72),
+        lowPassSweep: randomRange(-0.06, 0.04),
+        lowPassResonance: randomRange(0.18, 0.34),
+        highPassCutoff: randomRange(0.14, 0.26),
+        masterVolume: 0.5,
+      });
     case 'click':
       return clampSfxParams({
         waveform: 'sine',
@@ -462,6 +581,62 @@ export function createSfxPreset(
         startFrequency: randomRange(0.44, 0.82),
         squareDuty: randomRange(0.25, 0.6),
         highPassCutoff: randomRange(0.02, 0.1),
+        masterVolume: 0.5,
+      });
+    case 'hoverTick':
+      return clampSfxParams({
+        waveform: 'sine',
+        sustain: randomRange(0.005, 0.02),
+        sustainPunch: randomRange(0.06, 0.18),
+        decay: randomRange(0.015, 0.04),
+        startFrequency: randomRange(0.72, 0.9),
+        squareDuty: randomRange(0.2, 0.4),
+        highPassCutoff: randomRange(0.3, 0.46),
+        masterVolume: 0.3,
+      });
+    case 'notifyPop':
+      return clampSfxParams({
+        waveform: Math.random() > 0.5 ? 'sine' : 'square',
+        sustain: randomRange(0.06, 0.14),
+        sustainPunch: randomRange(0.1, 0.26),
+        decay: randomRange(0.08, 0.16),
+        startFrequency: randomRange(0.5, 0.7),
+        slide: randomRange(0.16, 0.3),
+        changeAmount: randomRange(0.14, 0.3),
+        changeSpeed: randomRange(0.2, 0.4),
+        squareDuty: randomRange(0.25, 0.5),
+        lowPassCutoff: randomRange(0.8, 0.98),
+        masterVolume: 0.44,
+      });
+    case 'successChime':
+      return clampSfxParams({
+        waveform: Math.random() > 0.4 ? 'sine' : 'square',
+        attack: randomRange(0.005, 0.02),
+        sustain: randomRange(0.16, 0.3),
+        sustainPunch: randomRange(0.04, 0.16),
+        decay: randomRange(0.2, 0.36),
+        startFrequency: randomRange(0.46, 0.6),
+        slide: randomRange(0.12, 0.26),
+        changeAmount: randomRange(0.16, 0.34),
+        changeSpeed: randomRange(0.24, 0.44),
+        squareDuty: randomRange(0.3, 0.55),
+        lowPassCutoff: randomRange(0.86, 1),
+        lowPassResonance: randomRange(0.04, 0.16),
+        masterVolume: 0.5,
+      });
+    case 'errorBuzz':
+      return clampSfxParams({
+        waveform: 'square',
+        sustain: randomRange(0.18, 0.32),
+        sustainPunch: randomRange(0.1, 0.24),
+        decay: randomRange(0.14, 0.26),
+        startFrequency: randomRange(0.16, 0.28),
+        minFrequency: randomRange(0.04, 0.1),
+        vibratoDepth: randomRange(0.45, 0.75),
+        vibratoSpeed: randomRange(0.55, 0.85),
+        squareDuty: randomRange(0.3, 0.5),
+        lowPassCutoff: randomRange(0.42, 0.62),
+        lowPassResonance: randomRange(0.1, 0.26),
         masterVolume: 0.5,
       });
     case 'synth':
@@ -493,6 +668,75 @@ export function createSfxPreset(
         lowPassCutoff: 1,
         highPassCutoff: 0,
         masterVolume: 0.52,
+      });
+    case 'whoosh':
+      return clampSfxParams({
+        waveform: 'noise',
+        attack: randomRange(0.18, 0.3),
+        sustain: randomRange(0.2, 0.34),
+        sustainPunch: randomRange(0.02, 0.12),
+        decay: randomRange(0.42, 0.62),
+        startFrequency: randomRange(0.3, 0.46),
+        minFrequency: randomRange(0.02, 0.1),
+        slide: randomRange(-0.5, -0.28),
+        vibratoDepth: randomRange(0.06, 0.18),
+        vibratoSpeed: randomRange(0.2, 0.4),
+        lowPassCutoff: randomRange(0.34, 0.56),
+        lowPassSweep: randomRange(-0.34, -0.16),
+        lowPassResonance: randomRange(0.28, 0.5),
+        highPassCutoff: randomRange(0.02, 0.08),
+        masterVolume: 0.48,
+      });
+    case 'riser':
+      return clampSfxParams({
+        waveform: Math.random() > 0.5 ? 'sawtooth' : 'square',
+        attack: randomRange(0.14, 0.26),
+        sustain: randomRange(0.48, 0.68),
+        sustainPunch: randomRange(0.02, 0.1),
+        decay: randomRange(0.3, 0.46),
+        startFrequency: randomRange(0.14, 0.26),
+        slide: randomRange(0.52, 0.82),
+        deltaSlide: randomRange(0.04, 0.14),
+        changeAmount: randomRange(0.16, 0.34),
+        changeSpeed: randomRange(0.24, 0.42),
+        squareDuty: randomRange(0.3, 0.6),
+        lowPassCutoff: randomRange(0.74, 0.94),
+        lowPassResonance: randomRange(0.06, 0.2),
+        masterVolume: 0.46,
+      });
+    case 'impact':
+      return clampSfxParams({
+        waveform: Math.random() > 0.5 ? 'sawtooth' : 'sine',
+        sustain: randomRange(0.08, 0.16),
+        sustainPunch: randomRange(0.5, 0.8),
+        decay: randomRange(0.34, 0.52),
+        startFrequency: randomRange(0.12, 0.2),
+        minFrequency: 0,
+        slide: randomRange(-0.6, -0.34),
+        deltaSlide: randomRange(-0.06, 0),
+        lowPassCutoff: randomRange(0.3, 0.5),
+        lowPassSweep: randomRange(-0.2, -0.06),
+        lowPassResonance: randomRange(0.26, 0.46),
+        highPassCutoff: randomRange(0.02, 0.08),
+        masterVolume: 0.72,
+      });
+    case 'glitch':
+      return clampSfxParams({
+        waveform: Math.random() > 0.3 ? 'square' : 'sawtooth',
+        sustain: randomRange(0.1, 0.2),
+        sustainPunch: randomRange(0.2, 0.44),
+        decay: randomRange(0.12, 0.22),
+        startFrequency: randomRange(0.38, 0.62),
+        changeAmount: randomRange(0.5, 0.86) * (Math.random() > 0.5 ? 1 : -1),
+        changeSpeed: randomRange(0.55, 0.9),
+        squareDuty: randomRange(0.08, 0.3),
+        dutySweep: randomRange(0.3, 0.56) * (Math.random() > 0.5 ? 1 : -1),
+        repeatSpeed: randomRange(0.28, 0.5),
+        phaserOffset: randomRange(0.3, 0.7) * (Math.random() > 0.5 ? 1 : -1),
+        phaserSweep: randomRange(0.2, 0.5) * (Math.random() > 0.5 ? 1 : -1),
+        lowPassCutoff: randomRange(0.6, 0.9),
+        highPassCutoff: randomRange(0.06, 0.18),
+        masterVolume: 0.44,
       });
     case 'mutate':
       return mutateSfxParams(current);
@@ -849,6 +1093,14 @@ function renderFootstepTerrain(
       return renderDirtTerrain(envelope, sampleRate);
     case 'gravel':
       return renderGravelTerrain(envelope, sampleRate);
+    case 'mud':
+      return renderMudTerrain(envelope, sampleRate);
+    case 'wood':
+      return renderWoodTerrain(envelope, sampleRate);
+    case 'metal':
+      return renderMetalTerrain(envelope, sampleRate);
+    case 'water':
+      return renderWaterTerrain(envelope, sampleRate);
     default:
       return new Float32Array(envelope.length);
   }
@@ -963,6 +1215,150 @@ function renderGravelTerrain(envelope: Float32Array, sampleRate: number): Float3
     pdMulScalar(pdHip(gritFiltered, pdConstant(envelope.length, 200), sampleRate), 2),
     envelope,
   );
+}
+
+function renderMudTerrain(envelope: Float32Array, sampleRate: number): Float32Array {
+  const envelopeSquared = pdMul(envelope, envelope);
+  const envelopeFourth = pdMul(envelopeSquared, envelopeSquared);
+
+  const squelchNoise = pdNoise(envelope.length);
+  const squelchLow = pdLop(squelchNoise, pdConstant(envelope.length, 70), sampleRate);
+  const squelchMid = pdLop(squelchNoise, pdConstant(envelope.length, 260), sampleRate);
+  const squelchRatio = pdDiv(squelchLow, squelchMid);
+  const squelchSweep = pdClip(
+    pdAdd(pdMulScalar(envelopeFourth, 900), pdConstant(envelope.length, 140)),
+    90,
+    2400,
+  );
+  const squelch = pdMul(
+    pdMulScalar(
+      pdVcf(
+        pdClip(squelchRatio, -1, 1),
+        squelchSweep,
+        pdConstant(envelope.length, 0.6),
+        sampleRate,
+      ),
+      0.6,
+    ),
+    envelope,
+  );
+
+  const bubbleFrequency = pdAdd(
+    pdMulScalar(envelopeSquared, 700),
+    pdConstant(envelope.length, 55),
+  );
+  const bubble = pdMulScalar(
+    pdMul(pdOsc(bubbleFrequency, sampleRate), envelopeSquared),
+    0.35,
+  );
+
+  const thudFrequency = pdAdd(
+    pdMulScalar(envelopeFourth, 260),
+    pdConstant(envelope.length, 34),
+  );
+  const thud = pdMulScalar(
+    pdMul(pdOsc(thudFrequency, sampleRate), envelopeSquared),
+    0.5,
+  );
+
+  return pdAdd(pdAdd(squelch, bubble), thud);
+}
+
+function renderWoodTerrain(envelope: Float32Array, sampleRate: number): Float32Array {
+  const envelopeSquared = pdMul(envelope, envelope);
+  const envelopeFourth = pdMul(envelopeSquared, envelopeSquared);
+
+  const knockFrequency = pdAdd(
+    pdMulScalar(envelopeSquared, 320),
+    pdConstant(envelope.length, 90),
+  );
+  const knock = pdMulScalar(pdMul(pdOsc(knockFrequency, sampleRate), envelopeSquared), 1.6);
+
+  const clickNoise = pdNoise(envelope.length);
+  const click = pdMulScalar(
+    pdMul(pdHip(clickNoise, pdConstant(envelope.length, 2200), sampleRate), envelopeFourth),
+    6,
+  );
+
+  const bodyNoise = pdLop(
+    pdNoise(envelope.length),
+    pdConstant(envelope.length, 180),
+    sampleRate,
+  );
+  const body = pdMulScalar(pdMul(bodyNoise, envelopeSquared), 0.2);
+
+  return pdAdd(pdAdd(knock, click), body);
+}
+
+function renderMetalTerrain(envelope: Float32Array, sampleRate: number): Float32Array {
+  const envelopeSquared = pdMul(envelope, envelope);
+
+  const ringWobble = pdMulScalar(
+    pdLop(pdNoise(envelope.length), pdConstant(envelope.length, 40), sampleRate),
+    240,
+  );
+  const ringFrequency = pdAdd(
+    pdAdd(pdMulScalar(envelopeSquared, 2600), pdConstant(envelope.length, 520)),
+    ringWobble,
+  );
+  const ring = pdMulScalar(pdMul(pdOsc(ringFrequency, sampleRate), envelopeSquared), 0.5);
+
+  const tingNoise = pdNoise(envelope.length);
+  const ting = pdMulScalar(
+    pdMul(pdHip(tingNoise, pdConstant(envelope.length, 3800), sampleRate), envelopeSquared),
+    0.55,
+  );
+
+  const clankSweep = pdClip(
+    pdAdd(pdMulScalar(envelope, 4200), pdConstant(envelope.length, 900)),
+    700,
+    8000,
+  );
+  const clank = pdMulScalar(
+    pdVcf(pdClip(tingNoise, -1, 1), clankSweep, pdConstant(envelope.length, 2), sampleRate),
+    0.34,
+  );
+
+  return pdAdd(pdAdd(ring, ting), clank);
+}
+
+function renderWaterTerrain(envelope: Float32Array, sampleRate: number): Float32Array {
+  const envelopeSquared = pdMul(envelope, envelope);
+  const envelopeFourth = pdMul(envelopeSquared, envelopeSquared);
+
+  const splashNoise = pdNoise(envelope.length);
+  const splashSweep = pdClip(
+    pdAdd(pdMulScalar(envelope, 5200), pdConstant(envelope.length, 900)),
+    600,
+    9000,
+  );
+  const splash = pdMulScalar(
+    pdMul(
+      pdVcf(
+        pdClip(splashNoise, -1, 1),
+        splashSweep,
+        pdConstant(envelope.length, 1.2),
+        sampleRate,
+      ),
+      envelope,
+    ),
+    0.9,
+  );
+
+  const droplet = pdMulScalar(
+    pdMul(
+      pdHip(pdNoise(envelope.length), pdConstant(envelope.length, 2600), sampleRate),
+      envelopeFourth,
+    ),
+    0.5,
+  );
+
+  const swell = pdMulScalar(
+    pdMul(pdLop(splashNoise, pdConstant(envelope.length, 260), sampleRate), envelopeSquared),
+    0.5,
+  );
+
+  return pdAdd(pdAdd(splash, droplet), swell);
 }
 
 function stepFn(threshold: number): (time: number) => number {
@@ -1241,7 +1637,14 @@ function isWaveform(value: unknown): value is SfxWaveform {
 }
 
 function isFootstepTerrain(value: unknown): value is SfxFootstepTerrain {
-  return value === 'snow' || value === 'grass' || value === 'dirt' || value === 'gravel';
+  return value === 'snow'
+    || value === 'grass'
+    || value === 'dirt'
+    || value === 'gravel'
+    || value === 'mud'
+    || value === 'wood'
+    || value === 'metal'
+    || value === 'water';
 }
 
 function clamp(value: number, min: number, max: number): number {

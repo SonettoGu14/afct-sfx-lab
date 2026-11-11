@@ -1,133 +1,109 @@
-# Retro SFX Lab / 复古游戏音效生成器
+# AFCT SFX Lab
 
-一个运行在浏览器里的复古游戏音效工作台，面向独立游戏开发、原型制作和快速音效迭代。
+**A browser-based sound-design workbench built for the Academy of Film and Creative Technology (AFCT), Xi'an Jiaotong-Liverpool University.**
 
-基于 `sfxr` 的参数合成思路，支持直接在页面里选择预设、切换波形、调节参数、实时试听，并导出可直接用于项目的音频文件或参数快照。
+Sketch, mutate and export retro/procedural sound effects without leaving the browser: 28 presets, two synthesis engines, eight footstep terrains, a full parameter console and four export formats. Everything renders locally — no audio ever leaves the page.
 
-- 在线体验：[mowangblog.github.io/game-sfx-generator-web](https://mowangblog.github.io/game-sfx-generator-web/)
+- Live: <https://sonettogu14.github.io/afct-sfx-lab/>
+- Based on: [mowangblog/game-sfx-generator-web](https://github.com/mowangblog/game-sfx-generator-web) (GPL-3.0)
 
-## 功能概览
+## Highlights
 
-- 内置常用复古音效预设：金币、激光、爆炸、跳跃、点击、受击、强化、选择等
-- 支持基础波形切换：方波、锯齿波、正弦波、噪声
-- 参数按分组管理，适合快速微调轮廓、频率、调制、质感和滤波
-- 调整预设、波形和参数后会自动试听，减少来回点播放的操作
-- 右侧预览区提供波形画布、统计信息、采样率和位深切换
-- 支持保存到浏览器本地生成历史，并可随时应用回工作台
-- 支持历史记录单条播放、单条导出、删除和标题重命名
-- 支持一键导出当前音效或历史记录
-- 支持批量导出全部历史记录，并按所选格式打包为 ZIP
+- **28 presets in five groups** — UI feedback, action/combat, cinematic transitions, footstep terrains and utility randomizers.
+- **Two engines** — an `sfxr`-style parameter synthesizer and a `footsteppr` footstep engine with 8 distinct terrains (snow, grass, dirt, gravel, mud, wood, metal, water).
+- **Full parameter console** — envelope, frequency, modulation, texture and filter sections, plus 4 waveforms, duty cycle, phaser, low/high-pass sweeps and master volume.
+- **Live preview** — waveform canvas, peak/clipping stats, duration and byte size; sample rate 8k–44.1k, 8/16-bit.
+- **Auto-preview** — regenerates and plays ~140 ms after the last tweak, so you can hear while you drag.
+- **Export** — WAV, MP3, OGG and JSON parameter snapshots; batch-export the whole history as a ZIP in any format.
+- **Local history** — save, apply, play, rename, export and delete snapshots (persisted in `localStorage`).
+- **Bilingual** — English and 中文, switchable in the header; the choice is remembered. English is the default.
+- **Dark cinema-tech theme** — XJTLU/AFCT brand palette (navy `#010544`, magenta `#ce57c1`, cyan `#25c5f9`).
 
-## 导出格式
+## Presets
 
-当前支持以下导出格式：
+| Group | Presets |
+| --- | --- |
+| UI | Click, Select, Hover, Notify, Success, Error |
+| Action | Coin, Laser, Explosion, Power Up, Hit, Jump |
+| Cinematic | Whoosh, Riser, Impact, Glitch, Synth, Tone |
+| Footsteps | Snow, Grass, Dirt, Gravel, Mud, Wood, Metal, Water |
+| Utility | Random, Mutate |
 
-- `WAV`
-- `JSON`
-- `MP3`
-- `OGG`
+Footstep presets use the `footsteppr` engine (heel / roll / ball / swiftness controls); every other preset uses the `sfxr` parameter synth.
 
-说明：
-
-- 所有音频都在本地浏览器内生成，不依赖后端服务
-- `JSON` 用于保存和恢复参数快照
-- 历史区的“全部导出”会把所有历史记录按所选格式分别生成后再打成一个 `.zip`
-
-## 生成历史
-
-点击“保存到历史”后，当前音效快照会保存到浏览器缓存。
-
-每条历史记录会保存：
-
-- 名称
-- 保存时间
-- 对应预设或自定义状态
-- 当前参数
-- 波形
-- 采样率
-- 位深
-
-你可以对历史记录执行这些操作：
-
-- `应用`：恢复到当前工作台
-- `播放`：试听该记录，不覆盖当前工作台
-- `导出`：导出该记录
-- `删除`：从历史中移除
-
-## 本地开发
-
-安装依赖：
+## Getting started
 
 ```bash
-npm install
+npm install      # Node 18+
+npm run dev      # local dev server
+npm run build    # type-check + production build
+npm run test     # Vitest suite
+npm run preview  # preview the production build
 ```
 
-启动开发环境：
+## Workflow
 
-```bash
-npm run dev
-```
+1. Pick a preset (or hit **Random** / **Mutate** to explore).
+2. Taste the result — it plays automatically; tweak sliders with the auto-preview on.
+3. Inspect the waveform, duration, sample rate and bit depth in the preview dock.
+4. Export WAV/MP3/OGG/JSON, or save the snapshot to the history panel for later.
 
-构建生产版本：
-
-```bash
-npm run build
-```
-
-运行测试：
-
-```bash
-npm run test
-```
-
-本地预览生产构建：
-
-```bash
-npm run preview
-```
-
-## 技术栈
-
-- `React 18`
-- `TypeScript`
-- `Vite`
-- `Vitest`
-- `lamejs`
-- `vorbis-encoder-js`
-
-## 项目结构
+## Project structure
 
 ```text
 src/
-  components/
-    GameSfxGenerator.tsx
-    GameSfxGenerator.test.tsx
+  i18n/                  # LanguageProvider, en.ts (source of truth), zh.ts
   lib/
-    sfx.ts
-    sfx.test.ts
-    audioExport.ts
-    zip.ts
-  App.tsx
-  styles.css
+    sfx.ts               # SfxParams, presets, both engines, terrain DSP, WAV encoder
+    presetCatalog.ts     # the 28 presets grouped for the rack
+    audioExport.ts       # MP3 (lamejs) / OGG (vorbis-encoder-js)
+    zip.ts               # dependency-free ZIP writer for batch export
+  components/
+    GameSfxGenerator.tsx # workbench UI, preview, history, JSON panel
+  App.tsx                # AFCT shell: hero, language switch, footer
+  styles.css             # dark cinema-tech theme
+docs/
+  spec-afct-web.md       # design/preset/i18n contract used for this rebuild
 ```
 
-## 部署
+### Adding a preset
 
-项目可以直接部署到静态站点环境，例如 GitHub Pages、Vercel 或 Netlify。
+1. Extend `SfxPresetId` and `SFX_PRESET_ORDER` in `src/lib/sfx.ts`.
+2. Add a `case` in `createSfxPreset` (return `clampSfxParams({...})`).
+3. Register it in `src/lib/presetCatalog.ts` (group order).
+4. Add `presets.<id>.label` / `.detail` / `.glyph` to `src/i18n/en.ts` and `zh.ts` — `zh.ts` is typed against `en.ts`, so a missing key fails the build.
+5. Cover it in `src/lib/sfx.test.ts` (bounded output is asserted for every preset).
 
-如果你使用 GitHub Pages：
+### Adding a footstep terrain
 
-1. 在仓库中启用 Pages
-2. 将发布源设置为 `GitHub Actions`
-3. 推送到主分支后执行构建与部署
+Extend `SfxFootstepTerrain` + `isFootstepTerrain`, add a `render*Terrain` DSP function and a `renderFootstepTerrain` case, then a preset that selects it.
 
-## 适用场景
+## Internationalization
 
-- 独立游戏原型阶段快速搓音效
-- Game Jam 或小项目的临时音效生成
-- 菜单点击、拾取反馈、命中、爆炸等复古风格音效制作
-- 导出参数快照，方便多人协作和复用
+- `src/i18n/index.tsx` — `LanguageProvider`, `useI18n()` → `{ language, setLanguage, t }`; `t('key', { name })` supports `{name}` interpolation.
+- `src/i18n/en.ts` is the single source of truth; `src/i18n/zh.ts` is `Record<MessageKey, string>` so translations can't silently drift.
+- The chosen language persists under `afct-sfx-lab:language` and is reflected on `<html lang>`.
+- To add a language, copy `en.ts`, translate the values, and register it in the provider — missing keys are caught at compile time.
 
-## License
+## Deployment
 
-`GPL-3.0-only`
+The included GitHub Actions workflow builds on every push to `main` and publishes `dist/` to GitHub Pages.
+
+1. Push to `SonettoGu14/afct-sfx-lab`.
+2. Repository → Settings → Pages → Source: **GitHub Actions**.
+3. `vite.config.ts` uses `base: '/afct-sfx-lab/'` for builds (dev stays at `/`); change it if you fork under a different repository name.
+
+Any static host works, provided the base path matches the deployment URL.
+
+## Attribution & License
+
+- Licensed **GPL-3.0-only** (see [LICENSE](LICENSE)); this project is a derivative work of [game-sfx-generator-web](https://github.com/mowangblog/game-sfx-generator-web), and the original copyright and license are retained.
+- The synthesis model follows `sfxr` by Tomas Pettersson (DrPetter); the footstep engine follows the `footsteppr` approach.
+- Brand colours come from XJTLU's public site stylesheet; the Gilroy brand typeface is **not** bundled (licensed) — the stack falls back to system sans.
+- This is a course/project tool, not an official XJTLU product.
+
+## 中文说明
+
+AFCT SFX Lab 是为西交利物浦大学影视与创意科技学院（AFCT）改造的音效工作台：28 个预设、双引擎（sfxr 参数合成 + 8 种脚步地形）、中英双语界面、WAV/MP3/OGG/JSON 导出与本地历史记录，全部在浏览器内完成，不上传任何音频。
+
+本项目基于 [mowangblog/game-sfx-generator-web](https://github.com/mowangblog/game-sfx-generator-web) 改造，遵循 GPL-3.0-only 许可，并保留原项目署名。
