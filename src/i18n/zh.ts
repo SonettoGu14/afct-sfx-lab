@@ -321,6 +321,7 @@ export const zh: Record<TranslationKey, string> = {
   'status.zipFailed': '全部导出 .{format} 失败。',
   'status.packaging': '正在打包游戏导出 ZIP…',
   'status.packaged': '游戏工程包已导出：{count} 个音效。',
+  'status.packagedSingle': '游戏工程包已导出：1 个音效。',
   'status.packageFailed': '游戏工程包导出失败。',
   'status.variantsPackaged': '已导出「{name}」的 {count} 个变体。',
   'status.fxBypassed': '已旁通 FX：正在试听引擎原始输出。',

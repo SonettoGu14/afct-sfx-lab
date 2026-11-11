@@ -319,6 +319,7 @@ export const en = {
   'status.zipFailed': 'Failed to export all history as .{format}.',
   'status.packaging': 'Packaging the game export ZIP…',
   'status.packaged': 'Game package exported: {count} sounds.',
+  'status.packagedSingle': 'Game package exported: 1 sound.',
   'status.packageFailed': 'Could not build the game package.',
   'status.variantsPackaged': 'Exported {count} variants of "{name}".',
   'status.fxBypassed': 'FX bypassed: previewing the raw engine output.',

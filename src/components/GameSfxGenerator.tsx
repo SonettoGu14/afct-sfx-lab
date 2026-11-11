@@ -729,7 +729,10 @@ export default function GameSfxGenerator() {
       const blob = await buildGamePackage(history.map((item) => toExportRequest(item, null)), exportSettings);
       const stamp = new Date().toISOString().slice(0, 10);
       downloadBlob(blob, `afct-sfx-game-package-${stamp}.zip`);
-      setStatus({ key: 'status.packaged', vars: { count: history.length } });
+      setStatus({
+        key: history.length === 1 ? 'status.packagedSingle' : 'status.packaged',
+        vars: { count: history.length },
+      });
     } catch {
       setStatus({ key: 'status.packageFailed' });
     }
