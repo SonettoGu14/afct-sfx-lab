@@ -18,6 +18,7 @@ Sketch, mutate and export retro/procedural sound effects without leaving the bro
 - **Export** — WAV, MP3, OGG and JSON parameter snapshots; batch-export the whole history as a ZIP in any format.
 - **Game export** — optional silence trim and peak target, category folders, configurable name prefix, `manifest.json`, and five seeded variants per take.
 - **Local history** — save, apply, play, rename, export and delete snapshots (persisted in `localStorage`).
+- **Music mode** — a 4-track, 8-bar loop sequencer that plays the same engine as an instrument: 11 instrument presets, 4/4–6/8 time signatures, 40–240 BPM and a clickable piano roll.
 - **Bilingual** — English and 中文, switchable in the header; the choice is remembered. English is the default.
 - **Paper-lab interface** — one light sheet with hairline rules, a dark instrument monitor, a single signal-red accent, and self-hosted Archivo + IBM Plex Mono.
 
@@ -80,6 +81,29 @@ manifest.json
 3. Keep 44.1 kHz for effects; use 48 kHz when mixing against linear media or when the project's audio setting is 48 kHz.
 4. Godot: import as WAV, loop off for one-shots, and rely on the same manifest to script `AudioStreamPlayer` wiring.
 
+## Music mode (v1.3)
+
+The **Music** tab turns the synth into an instrument. A score is a grid of sixteenth-note steps
+rendered by the same `renderSfx()` call as every preset, then mixed onto a loop:
+
+- **Four fixed tracks** — Lead, Bass, Chords and Drums. Each has an instrument preset, a gain
+  fader and a mute; tonal tracks span 24 MIDI rows, the drum kit five pieces.
+- **11 instrument presets** — six tonal (two leads, two basses, a pad and a pluck) and five
+  drum voices (kick, snare, closed/open hat, tom).
+- **Time and tempo** — 4/4, 3/4, 2/4 or 6/8, 4 or 8 bars, 40–240 BPM. BPM always counts quarter
+  notes; changing the signature keeps absolute note times and only moves the bar lines.
+- **Long notes** — the engine's envelope tops out around 1.2 s, so sustained notes are built by
+  tiling a steady slice with a 6 ms overlap-add crossfade, then released into the loop. There is
+  no audible seam and no truncation at slow tempos.
+- **Seamless loop** — release tails wrap around the loop point, and the bus is limited downward
+  to 0.995 only; quiet tracks are never boosted.
+- **Deterministic** — a score plus its seed renders byte-for-byte identically.
+- **Persistence and export** — the score auto-saves to `localStorage`; export WAV (16-bit,
+  -1 dBFS), MP3, OGG or the score JSON. The demo is the 8-bar CAT105TC loop.
+
+The score schema, render pipeline and limits are documented in
+[`docs/spec-music.md`](docs/spec-music.md).
+
 ## Getting started
 
 ```bash
@@ -109,12 +133,15 @@ src/
     presetCatalog.ts     # the 28 presets grouped for the rack
     audioExport.ts       # MP3 (lamejs) / OGG (vorbis-encoder-js)
     zip.ts               # dependency-free ZIP writer for batch export
+    score.ts             # Music mode: score schema, clamps, sequencer, loop renderer
   components/
     GameSfxGenerator.tsx # workbench UI, preview, history, JSON panel
+    MusicWorkbench.tsx   # Music mode: transport, track rack, piano roll, exports
   App.tsx                # shell: masthead, language switch, colophon
   styles.css             # paper-lab visual system
 docs/
   spec-afct-web.md       # design/preset/i18n contract used for this rebuild
+  spec-music.md          # Music mode score contract (v1.3)
 ```
 
 ### Adding a preset

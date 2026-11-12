@@ -452,7 +452,9 @@ function ExportMenu(props: { menuId: string; label: string; triggerText?: string
   );
 }
 
-export default function GameSfxGenerator() {
+type GameSfxGeneratorProps = { active?: boolean };
+
+export default function GameSfxGenerator({ active = true }: GameSfxGeneratorProps = {}) {
   const { language, t } = useI18n();
   const locale = language === 'zh' ? 'zh-CN' : 'en-US';
   const [params, setParams] = useState<SfxParams>(DEFAULT_SFX_PARAMS);
@@ -516,6 +518,21 @@ export default function GameSfxGenerator() {
     try { sourceRef.current?.stop(); } catch {}
     if (audioContextRef.current) void audioContextRef.current.close();
   }, []);
+
+  useEffect(() => {
+    if (active) return;
+    if (autoPreviewTimerRef.current !== null) {
+      window.clearTimeout(autoPreviewTimerRef.current);
+      autoPreviewTimerRef.current = null;
+    }
+    const source = sourceRef.current;
+    sourceRef.current = null;
+    if (source) {
+      source.onended = null;
+      try { source.stop(); } catch {}
+    }
+    setIsPlaying(false);
+  }, [active]);
 
   const commitParams = (nextValue: SfxParams | ((current: SfxParams) => SfxParams)): void => setParams((current) => clampSfxParams(typeof nextValue === 'function' ? nextValue(current) : nextValue));
   const ensureAudioContext = async (): Promise<AudioContext> => {
