@@ -99,6 +99,25 @@ describe('MusicWorkbench', () => {
     expect(screen.getByTestId('music-grid-size').textContent).toContain('8 × 16');
   });
 
+  it('shows all four tracks in one roll with per-track colours', async () => {
+    renderWorkbench();
+    await waitForNotes(154);
+    expect(screen.getByTestId('roll-section-lead')).toBeTruthy();
+    expect(screen.getByTestId('roll-section-bass')).toBeTruthy();
+    expect(screen.getByTestId('roll-section-chords')).toBeTruthy();
+    expect(screen.getByTestId('roll-section-drums')).toBeTruthy();
+    const colours = new Set(screen.getAllByTestId('music-note').map((note) => note.style.background));
+    expect(colours.size).toBe(4);
+  });
+
+  it('edits the track you click without switching first', async () => {
+    renderWorkbench();
+    await waitForNotes(154);
+    fireEvent.click(screen.getByTestId('roll-cell-bass-59-0'));
+    await waitForNotes(155);
+    expect(screen.getByTestId('track-row-bass').className).toContain('is-active');
+  });
+
   it('adds and removes a note by clicking the grid', async () => {
     renderWorkbench();
     await waitForNotes(154);

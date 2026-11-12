@@ -96,6 +96,14 @@ the two-pole filter rings around 5 kHz and square leads turn into a piercing buz
 6. Each note seed is `(score.seed ^ imul(noteIndex + 1, 0x9e3779b1)) >>> 0`, so a score plus
    its seed is byte-for-byte reproducible. `Math.random()` is never called in the render path.
 
+## Workbench layout
+
+All four tracks are drawn in one stacked piano roll (lead, bass, chords, drums), each with its
+own colour and a 22 px section header, so the arrangement can be read without switching tracks.
+Clicking a cell selects that track and adds or removes a note there; muting a track dims its
+notes. The roll scrolls horizontally and vertically inside a 560 px viewport and never widens
+the page.
+
 ## Persistence and export
 
 - The workbench stores the score under `afct-sfx-lab:score-v1` (300 ms debounce) and the mode

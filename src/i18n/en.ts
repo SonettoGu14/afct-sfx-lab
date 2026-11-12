@@ -359,7 +359,7 @@ export const en = {
   'music.gainFor': '{track} level',
   'music.mute': 'Mute',
   'music.muteFor': 'Mute {track}',
-  'music.gridLabel': 'Note grid for {track}',
+  'music.rollLabel': 'Piano roll — all four tracks',
   'music.drum.kick': 'Kick',
   'music.drum.snare': 'Snare',
   'music.drum.hatClosed': 'Hat',

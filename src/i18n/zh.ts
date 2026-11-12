@@ -361,7 +361,7 @@ export const zh: Record<TranslationKey, string> = {
   'music.gainFor': '{track}音量',
   'music.mute': '静音',
   'music.muteFor': '静音{track}',
-  'music.gridLabel': '{track}音符网格',
+  'music.rollLabel': '钢琴卷帘 — 全部四条音轨',
   'music.drum.kick': '底鼓',
   'music.drum.snare': '军鼓',
   'music.drum.hatClosed': '闭镲',

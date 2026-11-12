@@ -35,6 +35,21 @@ const SAMPLE_RATE = 44100;
 const RENDER_DEBOUNCE_MS = 250;
 const CELL_WIDTH = 14;
 const ROW_HEIGHT = 18;
+const SECTION_HEIGHT = 22;
+const TRACK_COLORS: Record<TrackId, string> = {
+  lead: '#d3401d',
+  bass: '#256d7b',
+  chords: '#b07b1e',
+  drums: '#6b5b95',
+};
+
+function trackRowCount(trackId: TrackId): number {
+  return trackId === 'drums' ? DRUM_PIECES.length : TRACK_PITCH_ROWS;
+}
+
+function trackRowPitch(trackId: TrackId, row: number): number {
+  return trackId === 'drums' ? row : TRACK_BASE_PITCH[trackId] + TRACK_PITCH_ROWS - 1 - row;
+}
 
 type ExportFormat = 'wav' | 'mp3' | 'ogg' | 'json';
 type StatusMessage = { key: TranslationKey; vars?: Record<string, string | number> };
@@ -116,32 +131,32 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
   const spb = stepsPerBar(score);
   const steps = totalSteps(score);
   const stepSeconds = secondsPerStep(score);
-  const rows = activeTrack === 'drums' ? DRUM_PIECES.length : TRACK_PITCH_ROWS;
   const brushSteps = brush === '1_bar' ? spb : (BRUSHES.find((option) => option.id === brush)?.steps ?? 4);
-
-  const trackNotes = useMemo(
-    () => score.notes.filter((note) => note.track === activeTrack),
-    [activeTrack, score.notes],
+  const rollHeight = TRACK_IDS.reduce(
+    (total, trackId) => total + SECTION_HEIGHT + trackRowCount(trackId) * ROW_HEIGHT,
+    0,
   );
-  const notesByPitch = useMemo(() => {
-    const map = new Map<number, ScoreNote[]>();
-    for (const note of trackNotes) {
-      const list = map.get(note.pitch);
+
+  const notesByTrackPitch = useMemo(() => {
+    const map = new Map<string, ScoreNote[]>();
+    for (const note of score.notes) {
+      const key = `${note.track}:${note.pitch}`;
+      const list = map.get(key);
       if (list) list.push(note);
-      else map.set(note.pitch, [note]);
+      else map.set(key, [note]);
     }
     return map;
-  }, [trackNotes]);
+  }, [score.notes]);
   const occupied = useMemo(() => {
     const map = new Map<string, ScoreNote>();
-    for (const note of trackNotes) {
-      const span = activeTrack === 'drums' ? 1 : note.length;
+    for (const note of score.notes) {
+      const span = note.track === 'drums' ? 1 : note.length;
       for (let step = note.start; step < note.start + span; step += 1) {
-        map.set(`${note.pitch}:${step}`, note);
+        map.set(`${note.track}:${note.pitch}:${step}`, note);
       }
     }
     return map;
-  }, [activeTrack, trackNotes]);
+  }, [score.notes]);
 
   useEffect(() => {
     renderedRef.current = rendered;
@@ -288,19 +303,20 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
     applyEdit({ ...score, bpm: Math.round(value) });
   };
 
-  const handleCell = (pitch: number, step: number): void => {
-    const hit = occupied.get(`${pitch}:${step}`);
+  const handleCell = (trackId: TrackId, pitch: number, step: number): void => {
+    setActiveTrack(trackId);
+    const hit = occupied.get(`${trackId}:${pitch}:${step}`);
     if (hit) {
       applyEdit({ ...score, notes: score.notes.filter((note) => note.id !== hit.id) });
       return;
     }
-    const length = activeTrack === 'drums' ? 1 : Math.min(brushSteps, steps - step);
+    const length = trackId === 'drums' ? 1 : Math.min(brushSteps, steps - step);
     if (length < 1) return;
     applyEdit({
       ...score,
       notes: [
         ...score.notes,
-        { id: createNoteId(), track: activeTrack, pitch, start: step, length, velocity: 1 },
+        { id: createNoteId(), track: trackId, pitch, start: step, length, velocity: 1 },
       ],
     });
   };
@@ -357,7 +373,6 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
 
   const signatureOptions: TimeSignature[] = ['4/4', '3/4', '2/4', '6/8'];
   const barStarts = Array.from({ length: score.bars }, (_, index) => index * spb);
-  const activeLabel = t(trackLabelKey(activeTrack));
 
   return (
     <section className="music" aria-label={t('music.workbenchLabel')}>
@@ -541,7 +556,10 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
                 onClick={() => setActiveTrack(trackId)}
                 role="presentation"
               >
-                <span className="track-row__name">{label}</span>
+                <span className="track-row__name">
+                  <i className="track-row__swatch" style={{ background: TRACK_COLORS[trackId] }} />
+                  {label}
+                </span>
                 {track.kind === 'tonal' ? (
                   <select
                     className="music__input music__input--select track-row__instrument"
@@ -585,56 +603,74 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
           })}
         </div>
 
-        <div className="roll" role="grid" aria-label={t('music.gridLabel', { track: activeLabel })}>
+        <div className="roll" role="grid" aria-label={t('music.rollLabel')}>
           <div className="roll__labels" aria-hidden="true">
-            {Array.from({ length: rows }, (_, row) => {
-              const pitch = activeTrack === 'drums' ? row : TRACK_BASE_PITCH[activeTrack] + TRACK_PITCH_ROWS - 1 - row;
-              return (
-                <div key={row} className="roll__label" style={{ height: ROW_HEIGHT }}>
-                  {activeTrack === 'drums' ? t(drumLabelKey(DRUM_PIECES[row])) : pitchName(pitch)}
+            {TRACK_IDS.map((trackId) => (
+              <div key={trackId}>
+                <div className="roll__label roll__label--section" style={{ height: SECTION_HEIGHT }}>
+                  <i className="roll__chip" style={{ background: TRACK_COLORS[trackId] }} />
+                  <span>{t(trackLabelKey(trackId))}</span>
                 </div>
-              );
-            })}
+                {Array.from({ length: trackRowCount(trackId) }, (_, row) => (
+                  <div key={row} className="roll__label" style={{ height: ROW_HEIGHT }}>
+                    {trackId === 'drums' ? t(drumLabelKey(DRUM_PIECES[row])) : pitchName(trackRowPitch(trackId, row))}
+                  </div>
+                ))}
+              </div>
+            ))}
           </div>
 
           <div
             className="roll__canvas"
-            style={{ width: steps * CELL_WIDTH, height: rows * ROW_HEIGHT }}
+            style={{ width: steps * CELL_WIDTH, height: rollHeight }}
           >
             {barStarts.map((barStart) => (
               <div
                 key={barStart}
                 className="roll__bar-line"
-                style={{ left: barStart * CELL_WIDTH, height: rows * ROW_HEIGHT }}
+                style={{ left: barStart * CELL_WIDTH, height: rollHeight }}
               />
             ))}
 
-            {Array.from({ length: rows }, (_, row) => {
-              const pitch = activeTrack === 'drums' ? row : TRACK_BASE_PITCH[activeTrack] + TRACK_PITCH_ROWS - 1 - row;
-              const rowNotes = notesByPitch.get(pitch) ?? [];
+            {TRACK_IDS.map((trackId) => {
+              const color = TRACK_COLORS[trackId];
+              const muted = score.tracks.some((track) => track.id === trackId && track.mute);
               return (
-                <div key={row} className="roll__row" style={{ height: ROW_HEIGHT }}>
-                  {Array.from({ length: steps }, (_, step) => (
-                    <div
-                      key={step}
-                      className="roll__cell"
-                      data-testid={`roll-cell-${activeTrack}-${pitch}-${step}`}
-                      style={{ width: CELL_WIDTH, height: ROW_HEIGHT }}
-                      onClick={() => handleCell(pitch, step)}
-                    />
-                  ))}
-                  {rowNotes.map((note) => (
-                    <div
-                      key={note.id}
-                      className="roll__note"
-                      data-testid="music-note"
-                      style={{
-                        left: note.start * CELL_WIDTH + 1,
-                        width: Math.max(4, (activeTrack === 'drums' ? 1 : note.length) * CELL_WIDTH - 2),
-                        height: ROW_HEIGHT - 4,
-                      }}
-                    />
-                  ))}
+                <div key={trackId} className="roll__section" data-testid={`roll-section-${trackId}`}>
+                  <div
+                    className="roll__band"
+                    style={{ height: SECTION_HEIGHT, background: `${color}1a`, borderTopColor: color }}
+                  />
+                  {Array.from({ length: trackRowCount(trackId) }, (_, row) => {
+                    const pitch = trackRowPitch(trackId, row);
+                    const rowNotes = notesByTrackPitch.get(`${trackId}:${pitch}`) ?? [];
+                    return (
+                      <div key={row} className="roll__row" style={{ height: ROW_HEIGHT }}>
+                        {Array.from({ length: steps }, (_, step) => (
+                          <div
+                            key={step}
+                            className="roll__cell"
+                            data-testid={`roll-cell-${trackId}-${pitch}-${step}`}
+                            style={{ width: CELL_WIDTH, height: ROW_HEIGHT }}
+                            onClick={() => handleCell(trackId, pitch, step)}
+                          />
+                        ))}
+                        {rowNotes.map((note) => (
+                          <div
+                            key={note.id}
+                            className={muted ? 'roll__note is-muted' : 'roll__note'}
+                            data-testid="music-note"
+                            style={{
+                              left: note.start * CELL_WIDTH + 1,
+                              width: Math.max(4, (trackId === 'drums' ? 1 : note.length) * CELL_WIDTH - 2),
+                              height: ROW_HEIGHT - 4,
+                              background: color,
+                            }}
+                          />
+                        ))}
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })}

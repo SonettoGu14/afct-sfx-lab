@@ -1696,7 +1696,7 @@ button {
 
 .music__body {
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
+  grid-template-columns: 340px minmax(0, 1fr);
 }
 
 .track-list {
@@ -1705,7 +1705,7 @@ button {
 
 .track-row {
   display: grid;
-  grid-template-columns: 58px minmax(0, 1fr) 64px auto;
+  grid-template-columns: 66px minmax(0, 1fr) 64px auto;
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
@@ -1719,10 +1719,20 @@ button {
 }
 
 .track-row__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-family: var(--font-mono);
   font-size: 10.5px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+.track-row__swatch {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 1px;
 }
 
 .track-row__instrument {
@@ -1753,8 +1763,8 @@ button {
 
 .roll {
   display: flex;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: auto;
+  max-height: 560px;
   max-width: 100%;
   background: var(--sheet);
 }
@@ -1764,7 +1774,7 @@ button {
   left: 0;
   z-index: 3;
   flex: none;
-  min-width: 46px;
+  min-width: 58px;
   background: var(--sheet);
   border-right: 1px solid var(--rule-strong);
 }
@@ -1781,9 +1791,39 @@ button {
   color: var(--ink-35);
 }
 
+.roll__label--section {
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 0 7px 0 6px;
+  background: var(--paper-deep);
+  border-bottom: 1px solid var(--rule-strong);
+  font-size: 10px;
+  color: var(--ink);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.roll__chip {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 1px;
+}
+
 .roll__canvas {
   position: relative;
   flex: none;
+}
+
+.roll__section {
+  position: relative;
+}
+
+.roll__band {
+  position: relative;
+  z-index: 0;
+  box-sizing: border-box;
+  border-top: 1px solid;
 }
 
 .roll__row {
@@ -1820,6 +1860,10 @@ button {
   border-radius: 1px;
   background: var(--signal);
   pointer-events: none;
+}
+
+.roll__note.is-muted {
+  opacity: 0.35;
 }
 
 .roll__playhead {
@@ -1867,7 +1911,7 @@ button {
   }
 
   .track-row {
-    grid-template-columns: 58px minmax(0, 1fr) auto;
+    grid-template-columns: 66px minmax(0, 1fr) auto;
   }
 
   .track-row__gain {
