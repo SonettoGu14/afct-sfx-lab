@@ -1923,3 +1923,135 @@ button {
     grid-row: 1 / span 2;
   }
 }
+
+/* Arrangement overview: the whole loop at a glance, no pitch rows. */
+.arrangement {
+  border-top: 1px solid var(--rule);
+  padding: 8px 12px 10px;
+  background: var(--sheet);
+}
+
+.arrangement__ruler {
+  display: flex;
+  height: 16px;
+}
+
+.arrangement__ruler-spacer {
+  flex: none;
+  width: 58px;
+}
+
+.arrangement__ticks {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.arrangement__tick {
+  position: absolute;
+  top: 0;
+  transform: translateX(1px);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--ink-35);
+  user-select: none;
+}
+
+.arrangement__grid {
+  display: flex;
+}
+
+.arrangement__labels {
+  flex: none;
+  width: 58px;
+  display: flex;
+  flex-direction: column;
+}
+
+.arrangement__label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-50);
+  user-select: none;
+}
+
+.arrangement__swatch {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 1px;
+}
+
+.arrangement__lanes {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.arrangement__lane {
+  position: relative;
+  height: 20px;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper);
+}
+
+.arrangement__lane--wave {
+  border-bottom: 0;
+  cursor: default;
+}
+
+.arrangement__wave {
+  display: block;
+  width: 100%;
+  height: 20px;
+}
+
+.arrangement__clip {
+  position: absolute;
+  top: 4px;
+  height: 12px;
+  min-width: 3px;
+  border-radius: 1px;
+  pointer-events: none;
+}
+
+.arrangement__clip.is-muted {
+  opacity: 0.35;
+}
+
+.arrangement__barline {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--rule);
+  pointer-events: none;
+}
+
+.arrangement__playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--ink);
+  pointer-events: none;
+  z-index: 2;
+}
+
+@media (max-width: 720px) {
+  .arrangement {
+    padding: 6px 10px 8px;
+  }
+
+  .arrangement__tick {
+    font-size: 8px;
+  }
+}

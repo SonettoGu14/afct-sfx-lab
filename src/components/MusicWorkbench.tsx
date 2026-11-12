@@ -36,6 +36,7 @@ const RENDER_DEBOUNCE_MS = 250;
 const CELL_WIDTH = 14;
 const ROW_HEIGHT = 18;
 const SECTION_HEIGHT = 22;
+const OVERVIEW_ROW_HEIGHT = 20;
 const TRACK_COLORS: Record<TrackId, string> = {
   lead: '#d3401d',
   bass: '#256d7b',
@@ -49,6 +50,57 @@ function trackRowCount(trackId: TrackId): number {
 
 function trackRowPitch(trackId: TrackId, row: number): number {
   return trackId === 'drums' ? row : TRACK_BASE_PITCH[trackId] + TRACK_PITCH_ROWS - 1 - row;
+}
+
+type OverviewRegion = { start: number; end: number };
+
+function mergeNoteRegions(notes: ScoreNote[], track: TrackId): OverviewRegion[] {
+  const regions: OverviewRegion[] = [];
+  for (const note of notes.filter((item) => item.track === track).sort((a, b) => a.start - b.start)) {
+    const end = note.start + (track === 'drums' ? 1 : note.length);
+    const last = regions[regions.length - 1];
+    if (last && note.start <= last.end) last.end = Math.max(last.end, end);
+    else regions.push({ start: note.start, end });
+  }
+  return regions;
+}
+
+function drawOverviewWave(canvas: HTMLCanvasElement | null, samples: Float32Array): void {
+  if (!canvas) return;
+  const ratio = Math.min(2, typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1);
+  const width = Math.max(1, canvas.clientWidth || 640);
+  const height = Math.max(1, canvas.clientHeight || OVERVIEW_ROW_HEIGHT);
+  const pixelWidth = Math.round(width * ratio);
+  const pixelHeight = Math.round(height * ratio);
+  if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+    canvas.width = pixelWidth;
+    canvas.height = pixelHeight;
+  }
+  const context = canvas.getContext('2d');
+  if (!context) return;
+  context.setTransform(ratio, 0, 0, ratio, 0, 0);
+  context.clearRect(0, 0, width, height);
+  const mid = height / 2;
+  context.fillStyle = 'rgba(26, 24, 21, 0.07)';
+  context.fillRect(0, 0, width, height);
+  if (samples.length === 0) return;
+  context.fillStyle = 'rgba(26, 24, 21, 0.45)';
+  const columns = Math.max(1, Math.floor(width));
+  for (let column = 0; column < columns; column += 1) {
+    const from = Math.floor((column / columns) * samples.length);
+    const to = Math.max(from + 1, Math.floor(((column + 1) / columns) * samples.length));
+    let min = 1;
+    let max = -1;
+    for (let index = from; index < to; index += 1) {
+      const value = samples[index] ?? 0;
+      if (value < min) min = value;
+      if (value > max) max = value;
+    }
+    if (min > max) continue;
+    const top = mid - max * mid * 0.92;
+    const bottom = mid - min * mid * 0.92;
+    context.fillRect(column, top, 1, Math.max(1, bottom - top));
+  }
 }
 
 type ExportFormat = 'wav' | 'mp3' | 'ogg' | 'json';
@@ -124,6 +176,10 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
   const startedAtRef = useRef(0);
   const rafRef = useRef<number | null>(null);
   const playheadRef = useRef<HTMLDivElement | null>(null);
+  const overviewPlayheadRef = useRef<HTMLDivElement | null>(null);
+  const overviewLanesRef = useRef<HTMLDivElement | null>(null);
+  const overviewWaveRef = useRef<HTMLCanvasElement | null>(null);
+  const seekSecondsRef = useRef(0);
   const renderedRef = useRef<ScoreRender | null>(null);
   const isPlayingRef = useRef(false);
   const firstRenderRef = useRef(true);
@@ -157,9 +213,24 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
     }
     return map;
   }, [score.notes]);
+  const overviewRegions = useMemo(
+    () => new Map<TrackId, OverviewRegion[]>(TRACK_IDS.map((trackId) => [trackId, mergeNoteRegions(score.notes, trackId)])),
+    [score.notes],
+  );
 
   useEffect(() => {
     renderedRef.current = rendered;
+  }, [rendered]);
+
+  useEffect(() => {
+    const canvas = overviewWaveRef.current;
+    if (!canvas) return undefined;
+    const samples = rendered?.samples ?? new Float32Array(0);
+    drawOverviewWave(canvas, samples);
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(() => drawOverviewWave(canvas, samples));
+    observer.observe(canvas);
+    return () => observer.disconnect();
   }, [rendered]);
   useEffect(() => {
     isPlayingRef.current = isPlaying;
@@ -219,10 +290,18 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
       rafRef.current = null;
     }
     setIsPlaying(false);
-    if (resetPlayhead && playheadRef.current) {
-      playheadRef.current.style.left = '0%';
+    if (resetPlayhead) {
+      seekSecondsRef.current = 0;
+      if (playheadRef.current) playheadRef.current.style.left = '0%';
+      if (overviewPlayheadRef.current) overviewPlayheadRef.current.style.left = '0%';
     }
   }, []);
+
+  const setPlayheadRatio = (ratio: number): void => {
+    const percent = `${ratio * 100}%`;
+    if (playheadRef.current) playheadRef.current.style.left = percent;
+    if (overviewPlayheadRef.current) overviewPlayheadRef.current.style.left = percent;
+  };
 
   useEffect(() => {
     if (!active) stopPlayback(false);
@@ -260,26 +339,42 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
           setIsPlaying(false);
         }
       };
-      startedAtRef.current = audioContext.currentTime;
-      source.start();
+      const loop = current.loopSeconds;
+      const offset = loop > 0 ? seekSecondsRef.current % loop : 0;
+      startedAtRef.current = audioContext.currentTime - offset;
+      source.start(0, offset);
       sourceRef.current = source;
       setIsPlaying(true);
       setStatus({ key: 'music.status.playing' });
 
       const tick = (): void => {
         const context = audioContextRef.current;
-        const element = playheadRef.current;
-        if (!context || !element) return;
+        if (!context) return;
         const loop = current.loopSeconds;
         const elapsed = context.currentTime - startedAtRef.current;
         const ratio = loop > 0 ? (elapsed % loop) / loop : 0;
-        element.style.left = `${ratio * 100}%`;
+        setPlayheadRatio(ratio);
         rafRef.current = requestAnimationFrame(tick);
       };
       tick();
     } catch {
       setStatus({ key: 'music.status.playFailed' });
     }
+  };
+
+  const handleSeek = (event: { clientX: number }): void => {
+    const current = renderedRef.current;
+    const lanes = overviewLanesRef.current;
+    if (!current || !lanes) return;
+    const rect = lanes.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    seekSecondsRef.current = Math.min(ratio * current.loopSeconds, Math.max(0, current.loopSeconds - 1 / SAMPLE_RATE));
+    if (isPlayingRef.current) {
+      void handlePlay();
+      return;
+    }
+    setPlayheadRatio(ratio);
   };
 
   const applyEdit = (next: Score): void => {
@@ -540,6 +635,83 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
         <span className={isRendering ? 'music__status is-live' : 'music__status'} role="status">
           {isRendering ? t('music.status.rendering') : t(status.key, status.vars)}
         </span>
+      </div>
+
+      <div
+        className="arrangement"
+        data-testid="music-overview"
+        role="group"
+        aria-label={t('music.overviewLabel')}
+        title={t('music.overviewHint')}
+      >
+        <div className="arrangement__ruler" aria-hidden="true">
+          <span className="arrangement__ruler-spacer" />
+          <div className="arrangement__ticks">
+            {Array.from({ length: score.bars }, (_, index) => (
+              <span
+                key={index}
+                className="arrangement__tick"
+                data-testid="overview-tick"
+                style={{ left: `${(index / score.bars) * 100}%` }}
+              >
+                {index + 1}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="arrangement__grid">
+          <div className="arrangement__labels" aria-hidden="true">
+            {TRACK_IDS.map((trackId) => (
+              <div key={trackId} className="arrangement__label">
+                <i className="arrangement__swatch" style={{ background: TRACK_COLORS[trackId] }} />
+                {t(trackLabelKey(trackId))}
+              </div>
+            ))}
+            <div className="arrangement__label">{t('music.overviewWaveShort')}</div>
+          </div>
+          <div className="arrangement__lanes" ref={overviewLanesRef} onClick={handleSeek}>
+            {barStarts.map((start) => (
+              <i
+                key={start}
+                className="arrangement__barline"
+                style={{ left: `${(start / steps) * 100}%` }}
+              />
+            ))}
+            {TRACK_IDS.map((trackId) => {
+              const muted = score.tracks.some((track) => track.id === trackId && track.mute);
+              return (
+                <div key={trackId} className="arrangement__lane" data-testid={`overview-lane-${trackId}`}>
+                  {(overviewRegions.get(trackId) ?? []).map((region, index) => (
+                    <i
+                      key={index}
+                      className={muted ? 'arrangement__clip is-muted' : 'arrangement__clip'}
+                      data-testid="overview-clip"
+                      style={{
+                        left: `${(region.start / steps) * 100}%`,
+                        width: `${((region.end - region.start) / steps) * 100}%`,
+                        background: TRACK_COLORS[trackId],
+                      }}
+                    />
+                  ))}
+                </div>
+              );
+            })}
+            <div className="arrangement__lane arrangement__lane--wave">
+              <canvas
+                ref={overviewWaveRef}
+                className="arrangement__wave"
+                data-testid="music-overview-wave"
+                role="img"
+                aria-label={t('music.overviewWave')}
+              />
+            </div>
+            <div
+              ref={overviewPlayheadRef}
+              className="arrangement__playhead"
+              data-testid="music-overview-playhead"
+            />
+          </div>
+        </div>
       </div>
 
       <div className="music__body">

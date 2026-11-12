@@ -104,6 +104,14 @@ Clicking a cell selects that track and adds or removes a note there; muting a tr
 notes. The roll scrolls horizontally and vertically inside a 560 px viewport and never widens
 the page.
 
+Above the roll sits the arrangement overview: one lane per track with no pitch rows. Each lane
+merges overlapping or touching notes into a single clip block coloured with the track colour, so
+the demo reads as a bass line, held pads and a drum pattern at a glance. A bar ruler, bar lines
+and a rendered-waveform lane sit alongside; a playhead sweeps the overview in sync with the roll
+during playback. Clicking anywhere on the overview seeks: while stopped it only moves the
+playheads and sets the next start point, while playing it restarts the loop from that position.
+The overview always fits the loop width (no horizontal scroll) and muted tracks are dimmed.
+
 ## Persistence and export
 
 - The workbench stores the score under `afct-sfx-lab:score-v1` (300 ms debounce) and the mode

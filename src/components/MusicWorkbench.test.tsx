@@ -14,14 +14,19 @@ const originalRevokeObjectURL = URL.revokeObjectURL;
 const originalAnchorClick = HTMLAnchorElement.prototype.click;
 const originalGetContext = HTMLCanvasElement.prototype.getContext;
 
+let lastSource: MockBufferSource | null = null;
+
 class MockBufferSource {
   buffer: AudioBuffer | null = null;
   loop = false;
   onended: (() => void) | null = null;
+  lastStart: { when?: number; offset?: number } | null = null;
 
   connect(): void {}
 
-  start(): void {}
+  start(when?: number, offset?: number): void {
+    this.lastStart = { when, offset };
+  }
 
   stop(): void {
     this.onended?.();
@@ -38,7 +43,9 @@ class MockAudioContext {
   }
 
   createBufferSource(): AudioBufferSourceNode {
-    return new MockBufferSource() as unknown as AudioBufferSourceNode;
+    const source = new MockBufferSource();
+    lastSource = source;
+    return source as unknown as AudioBufferSourceNode;
   }
 
   resume(): Promise<void> {
@@ -60,6 +67,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   localStorage.clear();
+  lastSource = null;
   createObjectUrl.mockClear();
   revokeObjectUrl.mockClear();
   anchorClick.mockClear();
@@ -194,6 +202,69 @@ describe('MusicWorkbench', () => {
     localStorage.setItem(SCORE_STORAGE_KEY, '{broken');
     renderWorkbench();
     await waitForNotes(154);
+  });
+
+  it('renders the arrangement overview with four lanes and clips', async () => {
+    renderWorkbench();
+    await waitForNotes(154);
+    expect(screen.getByTestId('music-overview')).toBeTruthy();
+    for (const track of ['lead', 'bass', 'chords', 'drums']) {
+      expect(screen.getByTestId(`overview-lane-${track}`)).toBeTruthy();
+    }
+    expect(screen.getAllByTestId('overview-clip').length).toBeGreaterThan(0);
+    expect(screen.getByTestId('music-overview-wave')).toBeTruthy();
+    expect(screen.getAllByTestId('overview-tick')).toHaveLength(8);
+  });
+
+  it('seeks from the overview and moves both playheads', async () => {
+    renderWorkbench();
+    await waitForNotes(154);
+    const lanes = document.querySelector('.arrangement__lanes') as HTMLElement;
+    vi.spyOn(lanes, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      width: 300,
+    } as DOMRect);
+    fireEvent.click(lanes, { clientX: 150 });
+    expect(screen.getByTestId('music-overview-playhead').style.left).toBe('50%');
+    expect(screen.getByTestId('music-playhead').style.left).toBe('50%');
+  });
+
+  it('starts playback from the sought position', async () => {
+    renderWorkbench();
+    await waitForNotes(154);
+    const lanes = document.querySelector('.arrangement__lanes') as HTMLElement;
+    vi.spyOn(lanes, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      width: 300,
+    } as DOMRect);
+    fireEvent.click(lanes, { clientX: 150 });
+    expect(lastSource).toBeNull();
+    fireEvent.click(screen.getByTestId('music-play'));
+    await waitFor(() => {
+      expect(lastSource?.lastStart).toBeTruthy();
+    });
+    expect(lastSource?.lastStart?.offset).toBeCloseTo(17.4545 / 2, 1);
+    expect(screen.getByTestId('music-overview-playhead').style.left).toBe('50%');
+  });
+
+  it('dims overview clips when a track is muted', async () => {
+    renderWorkbench();
+    await waitForNotes(154);
+    fireEvent.click(screen.getByTestId('track-mute-lead'));
+    await waitForNotes(128);
+    const lead = screen.getByTestId('overview-lane-lead');
+    expect(lead.querySelectorAll('.arrangement__clip.is-muted').length).toBeGreaterThan(0);
+  });
+
+  it('keeps the overview usable on an empty score', async () => {
+    renderWorkbench();
+    await waitForNotes(154);
+    fireEvent.click(screen.getByTestId('music-clear'));
+    await waitFor(() => {
+      expect(screen.queryAllByTestId('overview-clip')).toHaveLength(0);
+    });
+    expect(screen.getByTestId('music-overview')).toBeTruthy();
+    fireEvent.click(document.querySelector('.arrangement__lanes') as HTMLElement);
   });
 
   it('switches modes from the masthead', async () => {
