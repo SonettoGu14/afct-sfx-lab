@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
 import { encodeMp3FromSamples, encodeOggFromSamples } from '../lib/audioExport';
 import { useI18n } from '../i18n';
 import type { TranslationKey } from '../i18n/en';
@@ -53,6 +54,7 @@ function trackRowPitch(trackId: TrackId, row: number): number {
 }
 
 type OverviewRegion = { start: number; end: number };
+type PaintState = { track: TrackId; pitch: number; anchor: number; end: number };
 
 function mergeNoteRegions(notes: ScoreNote[], track: TrackId): OverviewRegion[] {
   const regions: OverviewRegion[] = [];
@@ -105,16 +107,6 @@ function drawOverviewWave(canvas: HTMLCanvasElement | null, samples: Float32Arra
 
 type ExportFormat = 'wav' | 'mp3' | 'ogg' | 'json';
 type StatusMessage = { key: TranslationKey; vars?: Record<string, string | number> };
-type BrushId = '1_16' | '1_8' | '1_4' | '1_2' | '1_bar';
-
-const BRUSHES: Array<{ id: BrushId; steps: number; key: TranslationKey }> = [
-  { id: '1_16', steps: 1, key: 'music.noteLength.1_16' },
-  { id: '1_8', steps: 2, key: 'music.noteLength.1_8' },
-  { id: '1_4', steps: 4, key: 'music.noteLength.1_4' },
-  { id: '1_2', steps: 8, key: 'music.noteLength.1_2' },
-  { id: '1_bar', steps: 0, key: 'music.noteLength.1_bar' },
-];
-
 const PITCH_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'] as const;
 
 function pitchName(midi: number): string {
@@ -163,7 +155,6 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
   const { t } = useI18n();
   const [score, setScore] = useState<Score>(loadScore);
   const [activeTrack, setActiveTrack] = useState<TrackId>('lead');
-  const [brush, setBrush] = useState<BrushId>('1_4');
   const [rendered, setRendered] = useState<ScoreRender | null>(null);
   const [isRendering, setIsRendering] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -183,11 +174,15 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
   const renderedRef = useRef<ScoreRender | null>(null);
   const isPlayingRef = useRef(false);
   const firstRenderRef = useRef(true);
+  const rollCanvasRef = useRef<HTMLDivElement | null>(null);
+  const paintRef = useRef<PaintState | null>(null);
+  const paintCellsRef = useRef<HTMLElement[]>([]);
+  const commitPaintRef = useRef<(paint: PaintState) => void>(() => {});
 
   const spb = stepsPerBar(score);
   const steps = totalSteps(score);
   const stepSeconds = secondsPerStep(score);
-  const brushSteps = brush === '1_bar' ? spb : (BRUSHES.find((option) => option.id === brush)?.steps ?? 4);
+  const bpmFill = ((score.bpm - BPM_MIN) / (BPM_MAX - BPM_MIN)) * 100;
   const rollHeight = TRACK_IDS.reduce(
     (total, trackId) => total + SECTION_HEIGHT + trackRowCount(trackId) * ROW_HEIGHT,
     0,
@@ -398,23 +393,89 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
     applyEdit({ ...score, bpm: Math.round(value) });
   };
 
-  const handleCell = (trackId: TrackId, pitch: number, step: number): void => {
+  const paintPreview = (from: number, to: number): void => {
+    for (const cell of paintCellsRef.current) cell.classList.remove('is-paint');
+    paintCellsRef.current = [];
+    const paint = paintRef.current;
+    const canvas = rollCanvasRef.current;
+    if (!paint || !canvas) return;
+    const start = Math.min(from, to);
+    const end = Math.max(from, to);
+    for (const cell of canvas.querySelectorAll<HTMLElement>(
+      `[data-track="${paint.track}"][data-pitch="${paint.pitch}"]`,
+    )) {
+      const step = Number(cell.dataset.step);
+      if (step >= start && step <= end) {
+        cell.classList.add('is-paint');
+        paintCellsRef.current.push(cell);
+      }
+    }
+  };
+
+  const startPaint = (
+    event: ReactPointerEvent<HTMLDivElement>,
+    trackId: TrackId,
+    pitch: number,
+    step: number,
+  ): void => {
+    if (event.button > 0) return;
     setActiveTrack(trackId);
     const hit = occupied.get(`${trackId}:${pitch}:${step}`);
     if (hit) {
       applyEdit({ ...score, notes: score.notes.filter((note) => note.id !== hit.id) });
       return;
     }
-    const length = trackId === 'drums' ? 1 : Math.min(brushSteps, steps - step);
-    if (length < 1) return;
+    event.preventDefault();
+    paintRef.current = { track: trackId, pitch, anchor: step, end: step };
+    paintPreview(step, step);
+  };
+
+  const extendPaint = (trackId: TrackId, pitch: number, step: number): void => {
+    const paint = paintRef.current;
+    if (!paint || paint.track !== trackId || paint.pitch !== pitch || paint.end === step) return;
+    paint.end = step;
+    paintPreview(paint.anchor, paint.end);
+  };
+
+  const commitPaint = (paint: PaintState): void => {
+    const start = Math.min(paint.anchor, paint.end);
+    const span =
+      paint.track === 'drums'
+        ? 1
+        : Math.min(Math.abs(paint.end - paint.anchor) + 1, steps - start);
+    if (span < 1) return;
+    const end = start + span;
+    const notes = score.notes.filter((note) => {
+      if (note.track !== paint.track || note.pitch !== paint.pitch) return true;
+      const noteEnd = note.start + (note.track === 'drums' ? 1 : note.length);
+      return noteEnd <= start || note.start >= end;
+    });
     applyEdit({
       ...score,
       notes: [
-        ...score.notes,
-        { id: createNoteId(), track: trackId, pitch, start: step, length, velocity: 1 },
+        ...notes,
+        { id: createNoteId(), track: paint.track, pitch: paint.pitch, start, length: span, velocity: 1 },
       ],
     });
   };
+  commitPaintRef.current = commitPaint;
+
+  useEffect(() => {
+    const finish = (): void => {
+      const paint = paintRef.current;
+      if (!paint) return;
+      paintRef.current = null;
+      for (const cell of paintCellsRef.current) cell.classList.remove('is-paint');
+      paintCellsRef.current = [];
+      commitPaintRef.current(paint);
+    };
+    window.addEventListener('pointerup', finish);
+    window.addEventListener('pointercancel', finish);
+    return () => {
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', finish);
+    };
+  }, []);
 
   const updateTrackGain = (trackId: TrackId, gain: number): void => {
     applyEdit({
@@ -496,35 +557,38 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
         </div>
 
         <label className="transport__field">
-          <span>{t('music.bpmShort')}</span>
-          <input
-            type="number"
-            className="music__input music__input--number"
-            data-testid="music-bpm-number"
-            min={BPM_MIN}
-            max={BPM_MAX}
-            value={bpmDraft}
-            aria-label={t('music.bpm')}
-            onChange={(event) => setBpmDraft(event.target.value)}
-            onBlur={commitBpm}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') commitBpm();
-            }}
-          />
+          <span className="transport__label">{t('music.bpmShort')}</span>
+          <span className="transport__control">
+            <input
+              type="number"
+              className="music__input music__input--number"
+              data-testid="music-bpm-number"
+              min={BPM_MIN}
+              max={BPM_MAX}
+              value={bpmDraft}
+              aria-label={t('music.bpm')}
+              onChange={(event) => setBpmDraft(event.target.value)}
+              onBlur={commitBpm}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') commitBpm();
+              }}
+            />
+            <input
+              type="range"
+              className="param__range transport__range"
+              data-testid="music-bpm-range"
+              min={BPM_MIN}
+              max={BPM_MAX}
+              step={1}
+              value={score.bpm}
+              style={{ '--fill': `${bpmFill}%` } as CSSProperties}
+              aria-label={t('music.bpm')}
+              onChange={(event) => applyEdit({ ...score, bpm: Number(event.target.value) })}
+            />
+          </span>
         </label>
-        <input
-          type="range"
-          className="transport__range"
-          data-testid="music-bpm-range"
-          min={BPM_MIN}
-          max={BPM_MAX}
-          step={1}
-          value={score.bpm}
-          aria-label={t('music.bpm')}
-          onChange={(event) => applyEdit({ ...score, bpm: Number(event.target.value) })}
-        />
         <label className="transport__field">
-          <span>{t('music.timeSignature')}</span>
+          <span className="transport__label">{t('music.timeSignature')}</span>
           <select
             className="music__input music__input--select"
             data-testid="music-signature"
@@ -540,7 +604,7 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
           </select>
         </label>
         <label className="transport__field">
-          <span>{t('music.bars')}</span>
+          <span className="transport__label">{t('music.bars')}</span>
           <select
             className="music__input music__input--select"
             data-testid="music-bars"
@@ -555,23 +619,6 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
             ))}
           </select>
         </label>
-        <label className="transport__field">
-          <span>{t('music.noteLength')}</span>
-          <select
-            className="music__input music__input--select"
-            data-testid="music-brush"
-            value={brush}
-            aria-label={t('music.noteLength')}
-            onChange={(event) => setBrush(event.target.value as BrushId)}
-          >
-            {BRUSHES.map((option) => (
-              <option key={option.id} value={option.id}>
-                {t(option.key)}
-              </option>
-            ))}
-          </select>
-        </label>
-
         <div className="transport__actions">
           <button
             type="button"
@@ -601,20 +648,22 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
           >
             {t('music.clear')}
           </button>
-          {(['wav', 'mp3', 'ogg', 'json'] as const).map((format) => (
-            <button
-              key={format}
-              type="button"
-              className="btn btn--quiet btn--sm"
-              data-testid={`music-export-${format}`}
-              disabled={exporting !== null || !rendered || score.notes.length === 0}
-              onClick={() => {
-                void handleExport(format);
-              }}
-            >
-              {format === 'json' ? t('music.exportJson') : format.toUpperCase()}
-            </button>
-          ))}
+          <div className="transport__exports" role="group" aria-label={t('music.exportGroup')}>
+            {(['wav', 'mp3', 'ogg', 'json'] as const).map((format) => (
+              <button
+                key={format}
+                type="button"
+                className="export-chip"
+                data-testid={`music-export-${format}`}
+                disabled={exporting !== null || !rendered || score.notes.length === 0}
+                onClick={() => {
+                  void handleExport(format);
+                }}
+              >
+                {format === 'json' ? t('music.exportJson') : format.toUpperCase()}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -693,6 +742,26 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
                       }}
                     />
                   ))}
+                  {score.notes
+                    .filter((note) => note.track === trackId)
+                    .map((note) => {
+                      const drums = trackId === 'drums';
+                      const noteEnd = Math.min(steps, note.start + (drums ? 1 : note.length));
+                      return (
+                        <i
+                          key={note.id}
+                          className={muted ? 'arrangement__note is-muted' : 'arrangement__note'}
+                          data-testid="overview-note"
+                          style={{
+                            left: `${(note.start / steps) * 100}%`,
+                            width: `calc(${(Math.max(1, noteEnd - note.start) / steps) * 100}% - 1px)`,
+                            background: TRACK_COLORS[trackId],
+                            top: drums ? `${(note.pitch / DRUM_PIECES.length) * 100}%` : '25%',
+                            height: drums ? `${100 / DRUM_PIECES.length}%` : '50%',
+                          }}
+                        />
+                      );
+                    })}
                 </div>
               );
             })}
@@ -732,34 +801,42 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
                   <i className="track-row__swatch" style={{ background: TRACK_COLORS[trackId] }} />
                   {label}
                 </span>
-                {track.kind === 'tonal' ? (
-                  <select
-                    className="music__input music__input--select track-row__instrument"
-                    data-testid={`track-instrument-${trackId}`}
-                    value={track.instrument}
-                    aria-label={t('music.instrumentFor', { track: label })}
-                    onChange={(event) => updateInstrument(trackId, event.target.value as TonalInstrumentId)}
-                  >
-                    {TONAL_INSTRUMENT_IDS.map((instrumentId) => (
-                      <option key={instrumentId} value={instrumentId}>
-                        {t(`instruments.${instrumentId}.label`)}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <span className="track-row__kit">{t('music.drumKit')}</span>
-                )}
-                <input
-                  type="range"
-                  className="track-row__gain"
-                  data-testid={`track-gain-${trackId}`}
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={track.gain}
-                  aria-label={t('music.gainFor', { track: label })}
-                  onChange={(event) => updateTrackGain(trackId, Number(event.target.value))}
-                />
+                <div className="track-row__main">
+                  {track.kind === 'tonal' ? (
+                    <select
+                      className="music__input music__input--select track-row__instrument"
+                      data-testid={`track-instrument-${trackId}`}
+                      value={track.instrument}
+                      aria-label={t('music.instrumentFor', { track: label })}
+                      onChange={(event) => updateInstrument(trackId, event.target.value as TonalInstrumentId)}
+                    >
+                      {TONAL_INSTRUMENT_IDS.map((instrumentId) => (
+                        <option key={instrumentId} value={instrumentId}>
+                          {t(`instruments.${instrumentId}.label`)}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className="track-row__kit">{t('music.drumKit')}</span>
+                  )}
+                  <span className="track-row__level">
+                    <input
+                      type="range"
+                      className="param__range track-row__gain"
+                      data-testid={`track-gain-${trackId}`}
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={track.gain}
+                      style={{ '--fill': `${track.gain * 100}%` } as CSSProperties}
+                      aria-label={t('music.gainFor', { track: label })}
+                      onChange={(event) => updateTrackGain(trackId, Number(event.target.value))}
+                    />
+                    <span className="track-row__value" aria-hidden="true">
+                      {Math.round(track.gain * 100)}
+                    </span>
+                  </span>
+                </div>
                 <label className="track-row__mute">
                   <input
                     type="checkbox"
@@ -793,6 +870,7 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
           </div>
 
           <div
+            ref={rollCanvasRef}
             className="roll__canvas"
             style={{ width: steps * CELL_WIDTH, height: rollHeight }}
           >
@@ -823,8 +901,12 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
                             key={step}
                             className="roll__cell"
                             data-testid={`roll-cell-${trackId}-${pitch}-${step}`}
+                            data-track={trackId}
+                            data-pitch={pitch}
+                            data-step={step}
                             style={{ width: CELL_WIDTH, height: ROW_HEIGHT }}
-                            onClick={() => handleCell(trackId, pitch, step)}
+                            onPointerDown={(event) => startPaint(event, trackId, pitch, step)}
+                            onPointerMove={() => extendPaint(trackId, pitch, step)}
                           />
                         ))}
                         {rowNotes.map((note) => (

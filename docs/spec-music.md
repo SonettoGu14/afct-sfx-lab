@@ -100,13 +100,15 @@ the two-pole filter rings around 5 kHz and square leads turn into a piercing buz
 
 All four tracks are drawn in one stacked piano roll (lead, bass, chords, drums), each with its
 own colour and a 22 px section header, so the arrangement can be read without switching tracks.
-Clicking a cell selects that track and adds or removes a note there; muting a track dims its
-notes. The roll scrolls horizontally and vertically inside a 560 px viewport and never widens
-the page.
+Clicking a cell selects that track and adds a one-step note; pressing on a cell and dragging
+horizontally draws a longer note in place, so any length can be written without a brush control.
+Clicking an existing note removes it as a whole. Muting a track dims its notes. The roll scrolls
+horizontally and vertically inside a 560 px viewport and never widens the page.
 
 Above the roll sits the arrangement overview: one lane per track with no pitch rows. Each lane
-merges overlapping or touching notes into a single clip block coloured with the track colour, so
-the demo reads as a bass line, held pads and a drum pattern at a glance. A bar ruler, bar lines
+draws a dim region band for merged musical activity plus one solid tick per note, positioned and
+sized by the note's grid position, so rhythm and rests stay readable without any pitch rows. The
+demo reads as a bass line, held pads and a drum pattern at a glance. A bar ruler, bar lines
 and a rendered-waveform lane sit alongside; a playhead sweeps the overview in sync with the roll
 during playback. Clicking anywhere on the overview seeks: while stopped it only moves the
 playheads and sets the next start point, while playing it restarts the loop from that position.

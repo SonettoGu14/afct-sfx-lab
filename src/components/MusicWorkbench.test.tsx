@@ -93,6 +93,17 @@ function renderWorkbench() {
   );
 }
 
+function paintOnce(cell: HTMLElement): void {
+  fireEvent.pointerDown(cell, { button: 0 });
+  fireEvent.pointerUp(window);
+}
+
+function paintDrag(from: HTMLElement, to: HTMLElement): void {
+  fireEvent.pointerDown(from, { button: 0 });
+  fireEvent.pointerMove(to);
+  fireEvent.pointerUp(window);
+}
+
 async function waitForNotes(count: number): Promise<void> {
   await waitFor(() => {
     expect(screen.getByTestId('music-notes').textContent).toContain(String(count));
@@ -121,7 +132,7 @@ describe('MusicWorkbench', () => {
   it('edits the track you click without switching first', async () => {
     renderWorkbench();
     await waitForNotes(154);
-    fireEvent.click(screen.getByTestId('roll-cell-bass-59-0'));
+    paintOnce(screen.getByTestId('roll-cell-bass-59-0'));
     await waitForNotes(155);
     expect(screen.getByTestId('track-row-bass').className).toContain('is-active');
   });
@@ -130,20 +141,22 @@ describe('MusicWorkbench', () => {
     renderWorkbench();
     await waitForNotes(154);
     const cell = screen.getByTestId('roll-cell-lead-83-0');
-    fireEvent.click(cell);
+    paintOnce(cell);
     await waitForNotes(155);
-    fireEvent.click(screen.getByTestId('roll-cell-lead-83-0'));
+    paintOnce(screen.getByTestId('roll-cell-lead-83-0'));
     await waitForNotes(154);
   });
 
-  it('uses the brush length for new notes', async () => {
+  it('draws a note by dragging across cells', async () => {
     renderWorkbench();
     await waitForNotes(154);
-    fireEvent.change(screen.getByTestId('music-brush'), { target: { value: '1_4' } });
-    fireEvent.click(screen.getByTestId('roll-cell-lead-83-0'));
+    paintDrag(
+      screen.getByTestId('roll-cell-lead-83-0'),
+      screen.getByTestId('roll-cell-lead-83-7'),
+    );
     await waitForNotes(155);
     const widths = screen.getAllByTestId('music-note').map((note) => note.style.width);
-    expect(widths).toContain('54px');
+    expect(widths).toContain('110px');
   });
 
   it('switches the time signature and resizes the grid', async () => {
@@ -214,6 +227,7 @@ describe('MusicWorkbench', () => {
     expect(screen.getAllByTestId('overview-clip').length).toBeGreaterThan(0);
     expect(screen.getByTestId('music-overview-wave')).toBeTruthy();
     expect(screen.getAllByTestId('overview-tick')).toHaveLength(8);
+    expect(screen.getAllByTestId('overview-note')).toHaveLength(154);
   });
 
   it('seeks from the overview and moves both playheads', async () => {
@@ -254,6 +268,7 @@ describe('MusicWorkbench', () => {
     await waitForNotes(128);
     const lead = screen.getByTestId('overview-lane-lead');
     expect(lead.querySelectorAll('.arrangement__clip.is-muted').length).toBeGreaterThan(0);
+    expect(lead.querySelectorAll('.arrangement__note.is-muted').length).toBeGreaterThan(0);
   });
 
   it('keeps the overview usable on an empty score', async () => {
