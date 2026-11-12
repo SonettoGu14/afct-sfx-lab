@@ -38,7 +38,7 @@ const CELL_WIDTH = 14;
 const ROW_HEIGHT = 18;
 const SECTION_HEIGHT = 22;
 const OVERVIEW_LANE_HEIGHT = 64;
-const OVERVIEW_WAVE_HEIGHT = 32;
+const OVERVIEW_WAVE_HEIGHT = 64;
 const TRACK_COLORS: Record<TrackId, string> = {
   lead: '#d3401d',
   bass: '#256d7b',
