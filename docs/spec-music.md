@@ -18,9 +18,9 @@ written) should mirror the JSON shape below.
   "stepsPerBeat": 4,
   "seed": 7,
   "tracks": [
-    { "id": "lead", "kind": "tonal", "instrument": "leadSquare", "gain": 0.9, "mute": false },
-    { "id": "bass", "kind": "tonal", "instrument": "bassSine", "gain": 0.6, "mute": false },
-    { "id": "chords", "kind": "tonal", "instrument": "padWarm", "gain": 0.3, "mute": false },
+    { "id": "lead", "kind": "tonal", "instrument": "leadSquare", "basePitch": 60, "gain": 0.9, "mute": false },
+    { "id": "bass", "kind": "tonal", "instrument": "bassSine", "basePitch": 36, "gain": 0.6, "mute": false },
+    { "id": "chords", "kind": "tonal", "instrument": "padWarm", "basePitch": 48, "gain": 0.3, "mute": false },
     { "id": "drums", "kind": "percussive", "instrument": null, "gain": 0.7, "mute": false }
   ],
   "notes": [
@@ -29,8 +29,12 @@ written) should mirror the JSON shape below.
 }
 ```
 
-- `pitch` is a MIDI note number (0–127) on tonal tracks and a drum-piece index (0–4) on the
-  drums track. `start` and `length` are counted in sixteenth-note steps.
+- `pitch` is a MIDI note number (0–127) on tonal tracks and a drum-piece index (0–6) on
+  percussive tracks. `start` and `length` are counted in sixteenth-note steps.
+- Tracks are identified by unique string ids. A score holds 1–8 tracks; the workbench adds
+  tonal or drum tracks (empty, with an id like `track-3`) and removes them together with their
+  notes. `basePitch` is the MIDI pitch drawn at the top row of a tonal track's roll; new tracks
+  derive it from the instrument family (bass 36, pads 48, everything else 60).
 - `id` is a UI key only; it is regenerated on import if missing and never affects the render.
 - `stepsPerBeat` is fixed at 4 (sixteenth-note grid).
 
@@ -61,19 +65,29 @@ Tonal instruments (`envelope: 'sustain'`) use a sustained source note that is ti
 requested length (see below). `pluck` uses `envelope: 'decay'` and lets the engine envelope
 ring out naturally.
 
-| id           | Kind       | Character                     |
-| ------------ | ---------- | ----------------------------- |
-| `leadSquare` | tonal      | square lead used by the demo  |
-| `leadPulse`  | tonal      | thinner 25% pulse lead        |
-| `bassSine`   | tonal      | sine bass used by the demo    |
-| `bassSquare` | tonal      | square bass with more edge    |
-| `padWarm`    | tonal      | slow sine pad                 |
-| `pluck`      | tonal      | short decaying pluck          |
-| `kick`       | percussive | sine drop kick                |
-| `snare`      | percussive | filtered noise snare          |
-| `hatClosed`  | percussive | short noise hat               |
-| `hatOpen`    | percussive | long noise hat                |
-| `tom`        | percussive | sine tom                      |
+| id           | Kind       | Character                          |
+| ------------ | ---------- | ---------------------------------- |
+| `leadSquare` | tonal      | square lead used by the demo       |
+| `leadPulse`  | tonal      | thinner 25% pulse lead             |
+| `leadSaw`    | tonal      | bright sawtooth lead               |
+| `leadSine`   | tonal      | hollow sine lead                   |
+| `chipLead`   | tonal      | narrow pulse chip lead             |
+| `bassSine`   | tonal      | sine bass used by the demo         |
+| `bassSquare` | tonal      | square bass with more edge         |
+| `bassSaw`    | tonal      | sawtooth bass                      |
+| `subBass`    | tonal      | very low sine sub                  |
+| `padWarm`    | tonal      | slow sine pad                      |
+| `padGlass`   | tonal      | filtered saw glass pad             |
+| `organ`      | tonal      | sustained square organ             |
+| `bell`       | tonal      | decaying sine bell                 |
+| `pluck`      | tonal      | short decaying pluck               |
+| `kick`       | percussive | sine drop kick                     |
+| `snare`      | percussive | filtered noise snare               |
+| `hatClosed`  | percussive | short noise hat                    |
+| `hatOpen`    | percussive | long noise hat                     |
+| `tom`        | percussive | sine tom                           |
+| `clap`       | percussive | short noise burst                  |
+| `rim`        | percussive | high square click                  |
 
 Two settings matter for the tonal presets: `lowPassResonance` is kept at 1.0 (at the default 0
 the two-pole filter rings around 5 kHz and square leads turn into a piercing buzz), and
@@ -99,13 +113,15 @@ the two-pole filter rings around 5 kHz and square leads turn into a piercing buz
 ## Workbench layout
 
 The workbench is split into an arrangement overview and a piano roll for one track at a time.
-The overview always shows all four tracks (lead, bass, chords, drums), each with its own colour
+The overview always shows every track in the score, each with its own colour
 in a tall lane that stacks notes by pitch, plus a waveform lane. Clicking a lane selects that
 track for the roll and seeks to that point, so the overview doubles as the track switcher.
 Clicking an existing note in the roll removes it as a whole; clicking an empty cell adds a
 one-step note, and pressing and dragging horizontally draws a longer note in place, so any
-length can be written without a brush control. Muting a track dims its notes. The roll scrolls
-horizontally inside a 560 px viewport and never widens the page.
+length can be written without a brush control. Muting a track dims its notes. Each track row has
+a delete button, and two buttons under the list add an empty tonal or drum track (up to eight
+tracks); deleting a track removes its notes too. The roll scrolls horizontally inside a 560 px
+viewport and never widens the page.
 
 Above the roll sits the arrangement overview: one lane per track, with notes stacked by pitch
 (24 rows for tonal tracks, five for drums) but no pitch labels. Each note is a solid tick sized

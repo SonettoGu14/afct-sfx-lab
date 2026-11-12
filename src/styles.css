@@ -1762,9 +1762,9 @@ button {
 
 .track-row {
   display: grid;
-  grid-template-columns: 66px minmax(0, 1fr) auto;
+  grid-template-columns: 74px minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   padding: 9px 12px;
   border-bottom: 1px solid var(--rule);
   cursor: pointer;
@@ -1778,6 +1778,7 @@ button {
 .track-row__name {
   display: inline-flex;
   align-items: center;
+  min-width: 0;
   gap: 5px;
   font-family: var(--font-mono);
   font-size: 10.5px;
@@ -1806,6 +1807,44 @@ button {
 
 .track-row__mute {
   align-self: center;
+}
+
+.track-row__text,
+.arrangement__label-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track-row__remove {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-35);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.track-row__remove:hover:not(:disabled) {
+  border-color: var(--rule-strong);
+  color: var(--signal);
+}
+
+.track-row__remove:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.track-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 12px;
 }
 
 .track-row__kit {
@@ -2020,7 +2059,7 @@ button {
 
 .arrangement__ruler-spacer {
   flex: none;
-  width: 58px;
+  width: 72px;
 }
 
 .arrangement__ticks {
@@ -2045,7 +2084,7 @@ button {
 
 .arrangement__labels {
   flex: none;
-  width: 58px;
+  width: 72px;
   display: flex;
   flex-direction: column;
 }

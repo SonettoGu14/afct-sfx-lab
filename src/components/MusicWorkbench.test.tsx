@@ -137,6 +137,35 @@ describe('MusicWorkbench', () => {
     expect(screen.getByTestId('track-row-bass').className).toContain('is-active');
   });
 
+  it('adds instrument and drum tracks and deletes them', async () => {
+    renderWorkbench();
+    await waitForNotes(154);
+
+    fireEvent.click(screen.getByTestId('music-add-tonal'));
+    await waitFor(() => expect(screen.getByTestId('roll-section-track-1')).toBeTruthy());
+    expect(screen.getByTestId('track-row-track-1').className).toContain('is-active');
+    paintOnce(screen.getByTestId('roll-cell-track-1-83-0'));
+    await waitForNotes(155);
+
+    fireEvent.click(screen.getByTestId('music-add-drums'));
+    await waitFor(() => expect(screen.getByTestId('roll-section-track-2')).toBeTruthy());
+    expect(document.querySelectorAll('[data-testid^="roll-cell-track-2-"]')).toHaveLength(7 * 128);
+
+    fireEvent.click(screen.getByTestId('track-remove-track-1'));
+    await waitFor(() => expect(screen.queryByTestId('track-row-track-1')).toBeNull());
+    await waitForNotes(154);
+    expect(screen.queryByTestId('overview-lane-track-1')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('track-remove-track-2'));
+    fireEvent.click(screen.getByTestId('track-remove-bass'));
+    fireEvent.click(screen.getByTestId('track-remove-chords'));
+    fireEvent.click(screen.getByTestId('track-remove-lead'));
+    await waitFor(() => expect(screen.queryByTestId('track-row-lead')).toBeNull());
+    expect(
+      (screen.getByTestId('track-remove-drums') as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
   it('adds and removes a note by clicking the grid', async () => {
     renderWorkbench();
     await waitForNotes(154);

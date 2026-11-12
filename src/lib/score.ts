@@ -30,17 +30,32 @@ const SIGNATURE_GRID: Record<TimeSignature, { numerator: number; denominator: nu
   '6/8': { numerator: 6, denominator: 8 },
 };
 
-export type TrackId = 'lead' | 'bass' | 'chords' | 'drums';
+export type TrackId = string;
 
 export type TonalInstrumentId =
   | 'leadSquare'
   | 'leadPulse'
+  | 'leadSaw'
+  | 'leadSine'
+  | 'chipLead'
   | 'bassSine'
   | 'bassSquare'
+  | 'bassSaw'
+  | 'subBass'
   | 'padWarm'
+  | 'padGlass'
+  | 'organ'
+  | 'bell'
   | 'pluck';
 
-export type DrumPieceId = 'kick' | 'snare' | 'hatClosed' | 'hatOpen' | 'tom';
+export type DrumPieceId =
+  | 'kick'
+  | 'snare'
+  | 'hatClosed'
+  | 'hatOpen'
+  | 'tom'
+  | 'clap'
+  | 'rim';
 
 export type InstrumentId = TonalInstrumentId | DrumPieceId;
 
@@ -63,15 +78,17 @@ export type PercussiveInstrument = {
 export type Instrument = TonalInstrument | PercussiveInstrument;
 
 export type TonalTrack = {
-  id: 'lead' | 'bass' | 'chords';
+  id: string;
   kind: 'tonal';
   instrument: TonalInstrumentId;
+  /** MIDI pitch of the top row in the piano roll. */
+  basePitch: number;
   gain: number;
   mute: boolean;
 };
 
 export type DrumTrack = {
-  id: 'drums';
+  id: string;
   kind: 'percussive';
   instrument: null;
   gain: number;
@@ -219,6 +236,62 @@ export const INSTRUMENTS: Record<InstrumentId, Instrument> = {
     gain: 0.45,
     params: tonalParams({ waveform: 'square', sustain: 0.1, decay: 0.18, squareDuty: 0.5, lowPassCutoff: 0.75 }),
   },
+  leadSaw: {
+    id: 'leadSaw',
+    kind: 'tonal',
+    envelope: 'sustain',
+    gain: 0.4,
+    params: tonalParams({ waveform: 'sawtooth', attack: 0.01, lowPassCutoff: 0.62, lowPassResonance: 0.5 }),
+  },
+  leadSine: {
+    id: 'leadSine',
+    kind: 'tonal',
+    envelope: 'sustain',
+    gain: 0.45,
+    params: tonalParams({ waveform: 'sine', attack: 0.01, lowPassCutoff: 0.85 }),
+  },
+  chipLead: {
+    id: 'chipLead',
+    kind: 'tonal',
+    envelope: 'sustain',
+    gain: 0.38,
+    params: tonalParams({ waveform: 'square', squareDuty: 0.125, attack: 0.004, lowPassCutoff: 0.8, lowPassResonance: 0.6 }),
+  },
+  bell: {
+    id: 'bell',
+    kind: 'tonal',
+    envelope: 'decay',
+    gain: 0.4,
+    params: tonalParams({ waveform: 'sine', sustain: 0.05, decay: 0.35, lowPassCutoff: 0.95 }),
+  },
+  organ: {
+    id: 'organ',
+    kind: 'tonal',
+    envelope: 'sustain',
+    gain: 0.34,
+    params: tonalParams({ waveform: 'square', squareDuty: 0.5, attack: 0.02, lowPassCutoff: 0.55, lowPassResonance: 0.4 }),
+  },
+  padGlass: {
+    id: 'padGlass',
+    kind: 'tonal',
+    envelope: 'sustain',
+    gain: 0.24,
+    params: tonalParams({ waveform: 'sawtooth', attack: 0.22, lowPassCutoff: 0.85, lowPassResonance: 0.5 }),
+  },
+  bassSaw: {
+    id: 'bassSaw',
+    kind: 'tonal',
+    envelope: 'sustain',
+    gain: 0.5,
+    params: tonalParams({ waveform: 'sawtooth', attack: 0.006, lowPassCutoff: 0.4, lowPassResonance: 0.7 }),
+  },
+  subBass: {
+    id: 'subBass',
+    kind: 'tonal',
+    envelope: 'sustain',
+    gain: 0.6,
+    params: tonalParams({ waveform: 'sine', attack: 0.004, lowPassCutoff: 0.25 }),
+  },
   kick: {
     id: 'kick',
     kind: 'percussive',
@@ -282,33 +355,103 @@ export const INSTRUMENTS: Record<InstrumentId, Instrument> = {
       lowPassCutoff: 0.6,
     }),
   },
+  clap: {
+    id: 'clap',
+    kind: 'percussive',
+    gain: 0.4,
+    params: percussiveParams({
+      waveform: 'noise',
+      sustain: 0.005,
+      decay: 0.09,
+      highPassCutoff: 0.25,
+      lowPassCutoff: 0.9,
+    }),
+  },
+  rim: {
+    id: 'rim',
+    kind: 'percussive',
+    gain: 0.35,
+    params: percussiveParams({
+      waveform: 'square',
+      sustain: 0.004,
+      decay: 0.03,
+      startFrequency: 0.85,
+      lowPassCutoff: 0.95,
+    }),
+  },
 };
 
 export const TONAL_INSTRUMENT_IDS: TonalInstrumentId[] = [
   'leadSquare',
   'leadPulse',
+  'leadSaw',
+  'leadSine',
+  'chipLead',
   'bassSine',
   'bassSquare',
+  'bassSaw',
+  'subBass',
   'padWarm',
+  'padGlass',
+  'organ',
+  'bell',
   'pluck',
 ];
 
-export const DRUM_PIECES: DrumPieceId[] = ['kick', 'snare', 'hatClosed', 'hatOpen', 'tom'];
+export const DRUM_PIECES: DrumPieceId[] = [
+  'kick',
+  'snare',
+  'hatClosed',
+  'hatOpen',
+  'tom',
+  'clap',
+  'rim',
+];
 
-export const TRACK_IDS: TrackId[] = ['lead', 'bass', 'chords', 'drums'];
-
-export const TRACK_BASE_PITCH: Record<'lead' | 'bass' | 'chords', number> = {
-  lead: 60,
-  bass: 36,
-  chords: 48,
-};
+export const MAX_TRACKS = 8;
 
 export const TRACK_PITCH_ROWS = 24;
 
+function defaultBasePitch(id: string, instrument: TonalInstrumentId): number {
+  if (id === 'bass' || instrument === 'bassSine' || instrument === 'bassSquare' || instrument === 'bassSaw' || instrument === 'subBass') {
+    return 36;
+  }
+  if (id === 'chords' || instrument === 'padWarm' || instrument === 'padGlass') {
+    return 48;
+  }
+  return 60;
+}
+
+export function createTrack(
+  kind: 'tonal' | 'percussive',
+  instrument: TonalInstrumentId | null,
+  existingIds: string[],
+): ScoreTrack {
+  let index = 1;
+  while (existingIds.includes(`track-${index}`)) {
+    index += 1;
+  }
+  const id = `track-${index}`;
+
+  if (kind === 'percussive') {
+    return { id, kind: 'percussive', instrument: null, gain: 0.7, mute: false };
+  }
+
+  const chosen = instrument ?? 'leadSquare';
+  return {
+    id,
+    kind: 'tonal',
+    instrument: chosen,
+    basePitch: defaultBasePitch(id, chosen),
+    gain: 0.6,
+    mute: false,
+  };
+}
+
 export const DEFAULT_TRACKS: ScoreTrack[] = [
-  { id: 'lead', kind: 'tonal', instrument: 'leadSquare', gain: 0.9, mute: false },
-  { id: 'bass', kind: 'tonal', instrument: 'bassSine', gain: 0.6, mute: false },
-  { id: 'chords', kind: 'tonal', instrument: 'padWarm', gain: 0.3, mute: false },
+  { id: 'lead', kind: 'tonal', instrument: 'leadSquare', basePitch: 60, gain: 0.9, mute: false },
+  { id: 'bass', kind: 'tonal', instrument: 'bassSine', basePitch: 36, gain: 0.6, mute: false },
+  { id: 'chords', kind: 'tonal', instrument: 'padWarm', basePitch: 48, gain: 0.3, mute: false },
   { id: 'drums', kind: 'percussive', instrument: null, gain: 0.7, mute: false },
 ];
 
@@ -321,7 +464,7 @@ export function isTimeSignature(value: unknown): value is TimeSignature {
 }
 
 export function isTrackId(value: unknown): value is TrackId {
-  return typeof value === 'string' && (TRACK_IDS as string[]).includes(value);
+  return typeof value === 'string' && value.trim().length > 0;
 }
 
 export function isTonalInstrumentId(value: unknown): value is TonalInstrumentId {
@@ -413,47 +556,61 @@ export function clampScore(input: Score): Score {
   const seed = finiteNumber(raw.seed) ? raw.seed >>> 0 : 1;
 
   const rawTracks = Array.isArray(raw.tracks) ? (raw.tracks as unknown[]) : [];
-  const trackById = new Map<string, Record<string, unknown>>();
+  const tracks: ScoreTrack[] = [];
+  const trackIds = new Set<string>();
 
   for (const candidate of rawTracks) {
+    if (tracks.length >= MAX_TRACKS) {
+      break;
+    }
+
     if (!candidate || typeof candidate !== 'object') {
       continue;
     }
+
     const record = candidate as Record<string, unknown>;
-    if (isTrackId(record.id) && !trackById.has(record.id)) {
-      trackById.set(record.id, record);
-    }
-  }
+    const id =
+      typeof record.id === 'string' && record.id.trim().length > 0
+        ? record.id.trim().slice(0, 32)
+        : `track-${tracks.length + 1}`;
 
-  const tracks: ScoreTrack[] = DEFAULT_TRACKS.map((fallback) => {
-    const candidate = trackById.get(fallback.id);
-
-    if (!candidate) {
-      return { ...fallback };
+    if (trackIds.has(id)) {
+      continue;
     }
 
-    if (fallback.kind === 'percussive') {
-      return {
-        id: 'drums',
+    trackIds.add(id);
+
+    if (record.kind === 'percussive') {
+      tracks.push({
+        id,
         kind: 'percussive',
         instrument: null,
-        gain: clampUnit(candidate.gain),
-        mute: candidate.mute === true,
-      };
+        gain: clampUnit(record.gain),
+        mute: record.mute === true,
+      });
+      continue;
     }
 
-    const instrument = isTonalInstrumentId(candidate.instrument)
-      ? candidate.instrument
-      : fallback.instrument;
+    const instrument = isTonalInstrumentId(record.instrument) ? record.instrument : 'leadSquare';
+    const basePitch = finiteNumber(record.basePitch)
+      ? Math.min(104, Math.max(0, Math.round(record.basePitch)))
+      : defaultBasePitch(id, instrument);
 
-    return {
-      id: fallback.id,
+    tracks.push({
+      id,
       kind: 'tonal',
       instrument,
-      gain: clampUnit(candidate.gain),
-      mute: candidate.mute === true,
-    };
-  });
+      basePitch,
+      gain: clampUnit(record.gain),
+      mute: record.mute === true,
+    });
+  }
+
+  if (tracks.length === 0) {
+    for (const fallback of DEFAULT_TRACKS) {
+      tracks.push({ ...fallback });
+    }
+  }
 
   const safe: Score = {
     version: SCORE_VERSION,
@@ -477,7 +634,7 @@ export function clampScore(input: Score): Score {
 
     const record = candidate as Record<string, unknown>;
 
-    if (!isTrackId(record.track)) {
+    if (!isTrackId(record.track) || !trackIds.has(record.track)) {
       continue;
     }
 
@@ -486,7 +643,8 @@ export function clampScore(input: Score): Score {
     }
 
     const trackId = record.track;
-    const isDrums = trackId === 'drums';
+    const track = tracks.find((entry) => entry.id === trackId);
+    const isDrums = track?.kind === 'percussive';
     const start = Math.round(record.start);
 
     if (start < 0 || start >= steps) {

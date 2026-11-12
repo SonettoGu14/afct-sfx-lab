@@ -4,8 +4,10 @@ import {
   BPM_MIN,
   DEMO_SCORE,
   DRUM_PIECES,
+  MAX_TRACKS,
   clampScore,
   createEmptyScore,
+  createTrack,
   deserializeScore,
   loopSampleCount,
   renderScore,
@@ -197,6 +199,47 @@ describe('score rendering', () => {
     expect(render.peak).toBe(0);
     expect(render.samples.every((value) => value === 0)).toBe(true);
     expect(render.rmsDb).toBe(Number.NEGATIVE_INFINITY);
+  });
+
+  it('keeps added tracks and drops notes that point at unknown tracks', () => {
+    const base = createEmptyScore();
+    const extra = createTrack('tonal', 'bell', base.tracks.map((track) => track.id));
+    const score = clampScore({
+      ...base,
+      tracks: [...base.tracks, extra],
+      notes: [
+        note({ track: 'lead', pitch: 60, start: 0 }),
+        note({ track: extra.id, pitch: 72, start: 4 }),
+        note({ track: 'ghost', pitch: 60, start: 8 }),
+      ],
+    });
+
+    expect(score.tracks).toHaveLength(5);
+    expect(score.tracks.some((track) => track.id === extra.id)).toBe(true);
+    expect(score.notes).toHaveLength(2);
+    expect(score.notes.some((entry) => entry.track === extra.id)).toBe(true);
+  });
+
+  it('caps the score at MAX_TRACKS and gives new tracks unique ids', () => {
+    const base = createEmptyScore();
+    const many = Array.from({ length: MAX_TRACKS + 3 }, (_, index) => ({
+      id: `slot-${index}`,
+      kind: 'tonal' as const,
+      instrument: 'leadSquare' as const,
+      basePitch: 60,
+      gain: 0.5,
+      mute: false,
+    }));
+    expect(clampScore({ ...base, tracks: many }).tracks).toHaveLength(MAX_TRACKS);
+
+    const first = createTrack('tonal', 'bassSaw', ['track-1', 'track-2']);
+    expect(first.id).toBe('track-3');
+    expect(first.kind).toBe('tonal');
+    expect(first.kind === 'tonal' ? first.basePitch : 0).toBe(36);
+
+    const second = createTrack('percussive', null, ['track-1']);
+    expect(second.id).toBe('track-2');
+    expect(second.kind).toBe('percussive');
   });
 
   it('counts only unmuted tracks in noteCount and renders them differently', () => {

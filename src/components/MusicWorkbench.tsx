@@ -10,12 +10,12 @@ import {
   BPM_MIN,
   DEMO_SCORE,
   DRUM_PIECES,
+  MAX_TRACKS,
   TONAL_INSTRUMENT_IDS,
-  TRACK_BASE_PITCH,
-  TRACK_IDS,
   TRACK_PITCH_ROWS,
   clampScore,
   createEmptyScore,
+  createTrack,
   deserializeScore,
   renderScore,
   secondsPerStep,
@@ -25,6 +25,7 @@ import {
   type Score,
   type ScoreNote,
   type ScoreRender,
+  type ScoreTrack,
   type TimeSignature,
   type TonalInstrumentId,
   type TrackId,
@@ -39,22 +40,21 @@ const ROW_HEIGHT = 18;
 const SECTION_HEIGHT = 22;
 const OVERVIEW_LANE_HEIGHT = 64;
 const OVERVIEW_WAVE_HEIGHT = 64;
-const TRACK_COLORS: Record<TrackId, string> = {
-  lead: '#d3401d',
-  bass: '#256d7b',
-  chords: '#b07b1e',
-  drums: '#6b5b95',
-};
+const TRACK_COLORS = ['#d3401d', '#256d7b', '#b07b1e', '#6b5b95', '#3f7d3a', '#8a3f6b', '#2f5d8a', '#7a5c2e'];
 
-function trackRowCount(trackId: TrackId): number {
-  return trackId === 'drums' ? DRUM_PIECES.length : TRACK_PITCH_ROWS;
+function trackColor(index: number): string {
+  return TRACK_COLORS[index % TRACK_COLORS.length] ?? TRACK_COLORS[0];
 }
 
-function trackRowPitch(trackId: TrackId, row: number): number {
-  return trackId === 'drums' ? row : TRACK_BASE_PITCH[trackId] + TRACK_PITCH_ROWS - 1 - row;
+function trackRowCount(track: ScoreTrack): number {
+  return track.kind === 'percussive' ? DRUM_PIECES.length : TRACK_PITCH_ROWS;
 }
 
-type PaintState = { track: TrackId; pitch: number; anchor: number; end: number };
+function trackRowPitch(track: ScoreTrack, row: number): number {
+  return track.kind === 'percussive' ? row : track.basePitch + TRACK_PITCH_ROWS - 1 - row;
+}
+
+type PaintState = { track: TrackId; drums: boolean; pitch: number; anchor: number; end: number };
 
 function drawOverviewWave(canvas: HTMLCanvasElement | null, samples: Float32Array): void {
   if (!canvas) return;
@@ -130,8 +130,10 @@ function loadScore(): Score {
   return DEMO_SCORE;
 }
 
-function trackLabelKey(track: TrackId): TranslationKey {
-  return `music.track.${track}`;
+function trackLabel(track: ScoreTrack, t: (key: TranslationKey) => string): string {
+  return track.kind === 'percussive'
+    ? t('music.track.drums')
+    : t(`instruments.${track.instrument}.label`);
 }
 
 function drumLabelKey(piece: (typeof DRUM_PIECES)[number]): TranslationKey {
@@ -143,7 +145,7 @@ type MusicWorkbenchProps = { active?: boolean };
 export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
   const { t } = useI18n();
   const [score, setScore] = useState<Score>(loadScore);
-  const [activeTrack, setActiveTrack] = useState<TrackId>('lead');
+  const [activeTrackId, setActiveTrackId] = useState<string>('lead');
   const [rendered, setRendered] = useState<ScoreRender | null>(null);
   const [isRendering, setIsRendering] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -172,9 +174,28 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
   const steps = totalSteps(score);
   const stepSeconds = secondsPerStep(score);
   const bpmFill = ((score.bpm - BPM_MIN) / (BPM_MAX - BPM_MIN)) * 100;
+  const activeTrack =
+    score.tracks.find((track) => track.id === activeTrackId) ?? score.tracks[0];
+  const activeIndex = Math.max(
+    0,
+    score.tracks.findIndex((track) => track.id === activeTrack.id),
+  );
   const rollHeight = SECTION_HEIGHT + trackRowCount(activeTrack) * ROW_HEIGHT;
-  const activeColor = TRACK_COLORS[activeTrack];
-  const activeMuted = score.tracks.some((track) => track.id === activeTrack && track.mute);
+  const activeColor = trackColor(activeIndex);
+  const activeMuted = activeTrack.mute;
+  const trackLabels = useMemo(() => {
+    const seen = new Map<string, number>();
+    const labels = new Map<string, string>();
+    for (const track of score.tracks) {
+      const base = trackLabel(track, t);
+      const count = (seen.get(base) ?? 0) + 1;
+      seen.set(base, count);
+      labels.set(track.id, count === 1 ? base : `${base} ${count}`);
+    }
+    return labels;
+  }, [score.tracks, t]);
+  const labelFor = (track: ScoreTrack): string =>
+    trackLabels.get(track.id) ?? trackLabel(track, t);
 
   const notesByTrackPitch = useMemo(() => {
     const map = new Map<string, ScoreNote[]>();
@@ -196,6 +217,12 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
     }
     return map;
   }, [score.notes]);
+  useEffect(() => {
+    if (!score.tracks.some((track) => track.id === activeTrackId)) {
+      setActiveTrackId(score.tracks[0]?.id ?? 'lead');
+    }
+  }, [score.tracks, activeTrackId]);
+
   useEffect(() => {
     renderedRef.current = rendered;
   }, [rendered]);
@@ -397,19 +424,19 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
 
   const startPaint = (
     event: ReactPointerEvent<HTMLDivElement>,
-    trackId: TrackId,
+    track: ScoreTrack,
     pitch: number,
     step: number,
   ): void => {
     if (event.button > 0) return;
-    setActiveTrack(trackId);
-    const hit = occupied.get(`${trackId}:${pitch}:${step}`);
+    setActiveTrackId(track.id);
+    const hit = occupied.get(`${track.id}:${pitch}:${step}`);
     if (hit) {
       applyEdit({ ...score, notes: score.notes.filter((note) => note.id !== hit.id) });
       return;
     }
     event.preventDefault();
-    paintRef.current = { track: trackId, pitch, anchor: step, end: step };
+    paintRef.current = { track: track.id, drums: track.kind === 'percussive', pitch, anchor: step, end: step };
     paintPreview(step, step);
   };
 
@@ -422,15 +449,14 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
 
   const commitPaint = (paint: PaintState): void => {
     const start = Math.min(paint.anchor, paint.end);
-    const span =
-      paint.track === 'drums'
-        ? 1
-        : Math.min(Math.abs(paint.end - paint.anchor) + 1, steps - start);
+    const span = paint.drums
+      ? 1
+      : Math.min(Math.abs(paint.end - paint.anchor) + 1, steps - start);
     if (span < 1) return;
     const end = start + span;
     const notes = score.notes.filter((note) => {
       if (note.track !== paint.track || note.pitch !== paint.pitch) return true;
-      const noteEnd = note.start + (note.track === 'drums' ? 1 : note.length);
+      const noteEnd = note.start + (paint.drums ? 1 : note.length);
       return noteEnd <= start || note.start >= end;
     });
     applyEdit({
@@ -472,6 +498,26 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
       ...score,
       tracks: score.tracks.map((track) => (track.id === trackId ? { ...track, mute: !track.mute } : track)),
     });
+  };
+
+  const addTrack = (kind: 'tonal' | 'percussive', instrument: TonalInstrumentId | null): void => {
+    if (score.tracks.length >= MAX_TRACKS) return;
+    const track = createTrack(kind, instrument, score.tracks.map((item) => item.id));
+    applyEdit({ ...score, tracks: [...score.tracks, track] });
+    setActiveTrackId(track.id);
+  };
+
+  const removeTrack = (trackId: string): void => {
+    if (score.tracks.length <= 1) return;
+    const tracks = score.tracks.filter((track) => track.id !== trackId);
+    applyEdit({
+      ...score,
+      tracks,
+      notes: score.notes.filter((note) => note.track !== trackId),
+    });
+    if (activeTrackId === trackId) {
+      setActiveTrackId(tracks[0]?.id ?? score.tracks[0].id);
+    }
   };
 
   const updateInstrument = (trackId: TrackId, instrument: TonalInstrumentId): void => {
@@ -693,10 +739,10 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
         </div>
         <div className="arrangement__grid">
           <div className="arrangement__labels" aria-hidden="true">
-            {TRACK_IDS.map((trackId) => (
-              <div key={trackId} className="arrangement__label">
-                <i className="arrangement__swatch" style={{ background: TRACK_COLORS[trackId] }} />
-                {t(trackLabelKey(trackId))}
+            {score.tracks.map((track, index) => (
+              <div key={track.id} className="arrangement__label" title={labelFor(track)}>
+                <i className="arrangement__swatch" style={{ background: trackColor(index) }} />
+                <span className="arrangement__label-text">{labelFor(track)}</span>
               </div>
             ))}
             <div className="arrangement__label">{t('music.overviewWaveShort')}</div>
@@ -709,38 +755,38 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
                 style={{ left: `${(start / steps) * 100}%` }}
               />
             ))}
-            {TRACK_IDS.map((trackId) => {
-              const muted = score.tracks.some((track) => track.id === trackId && track.mute);
-              const rowCount = trackRowCount(trackId);
+            {score.tracks.map((track, index) => {
+              const rowCount = trackRowCount(track);
               const rowHeight = OVERVIEW_LANE_HEIGHT / rowCount;
+              const color = trackColor(index);
               return (
                 <div
-                  key={trackId}
+                  key={track.id}
                   className={
-                    trackId === activeTrack ? 'arrangement__lane is-active' : 'arrangement__lane'
+                    track.id === activeTrack.id ? 'arrangement__lane is-active' : 'arrangement__lane'
                   }
-                  data-testid={`overview-lane-${trackId}`}
+                  data-testid={`overview-lane-${track.id}`}
                   style={{ height: OVERVIEW_LANE_HEIGHT }}
-                  onClick={() => setActiveTrack(trackId)}
+                  onClick={() => setActiveTrackId(track.id)}
                 >
                   {score.notes
-                    .filter((note) => note.track === trackId)
+                    .filter((note) => note.track === track.id)
                     .map((note) => {
-                      const drums = trackId === 'drums';
+                      const drums = track.kind === 'percussive';
                       const noteEnd = Math.min(steps, note.start + (drums ? 1 : note.length));
                       const row = drums
                         ? note.pitch
-                        : TRACK_BASE_PITCH[trackId] + TRACK_PITCH_ROWS - 1 - note.pitch;
+                        : track.basePitch + TRACK_PITCH_ROWS - 1 - note.pitch;
                       const rowIndex = Math.min(rowCount - 1, Math.max(0, row));
                       return (
                         <i
                           key={note.id}
-                          className={muted ? 'arrangement__note is-muted' : 'arrangement__note'}
+                          className={track.mute ? 'arrangement__note is-muted' : 'arrangement__note'}
                           data-testid="overview-note"
                           style={{
                             left: `${(note.start / steps) * 100}%`,
                             width: `calc(${(Math.max(1, noteEnd - note.start) / steps) * 100}% - 1px)`,
-                            background: TRACK_COLORS[trackId],
+                            background: color,
                             top: rowIndex * rowHeight + rowHeight * 0.12,
                             height: Math.max(2, rowHeight * 0.82),
                           }}
@@ -770,30 +816,29 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
 
       <div className="music__body">
         <div className="track-list" role="group" aria-label={t('music.tracks')}>
-          {TRACK_IDS.map((trackId) => {
-            const track = score.tracks.find((item) => item.id === trackId);
-            if (!track) return null;
-            const label = t(trackLabelKey(trackId));
+          {score.tracks.map((track, trackIndex) => {
+            const label = labelFor(track);
+            const color = trackColor(trackIndex);
             return (
               <div
-                key={trackId}
-                className={trackId === activeTrack ? 'track-row is-active' : 'track-row'}
-                data-testid={`track-row-${trackId}`}
-                onClick={() => setActiveTrack(trackId)}
+                key={track.id}
+                className={track.id === activeTrack.id ? 'track-row is-active' : 'track-row'}
+                data-testid={`track-row-${track.id}`}
+                onClick={() => setActiveTrackId(track.id)}
                 role="presentation"
               >
                 <span className="track-row__name">
-                  <i className="track-row__swatch" style={{ background: TRACK_COLORS[trackId] }} />
-                  {label}
+                  <i className="track-row__swatch" style={{ background: color }} />
+                  <span className="track-row__text">{label}</span>
                 </span>
                 <div className="track-row__main">
                   {track.kind === 'tonal' ? (
                     <select
                       className="music__input music__input--select track-row__instrument"
-                      data-testid={`track-instrument-${trackId}`}
+                      data-testid={`track-instrument-${track.id}`}
                       value={track.instrument}
                       aria-label={t('music.instrumentFor', { track: label })}
-                      onChange={(event) => updateInstrument(trackId, event.target.value as TonalInstrumentId)}
+                      onChange={(event) => updateInstrument(track.id, event.target.value as TonalInstrumentId)}
                     >
                       {TONAL_INSTRUMENT_IDS.map((instrumentId) => (
                         <option key={instrumentId} value={instrumentId}>
@@ -808,14 +853,14 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
                     <input
                       type="range"
                       className="param__range track-row__gain"
-                      data-testid={`track-gain-${trackId}`}
+                      data-testid={`track-gain-${track.id}`}
                       min={0}
                       max={1}
                       step={0.01}
                       value={track.gain}
                       style={{ '--fill': `${track.gain * 100}%` } as CSSProperties}
                       aria-label={t('music.gainFor', { track: label })}
-                      onChange={(event) => updateTrackGain(trackId, Number(event.target.value))}
+                      onChange={(event) => updateTrackGain(track.id, Number(event.target.value))}
                     />
                     <span className="track-row__value" aria-hidden="true">
                       {Math.round(track.gain * 100)}
@@ -825,27 +870,61 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
                 <label className="track-row__mute">
                   <input
                     type="checkbox"
-                    data-testid={`track-mute-${trackId}`}
+                    data-testid={`track-mute-${track.id}`}
                     checked={track.mute}
                     aria-label={t('music.muteFor', { track: label })}
-                    onChange={() => toggleMute(trackId)}
+                    onChange={() => toggleMute(track.id)}
                   />
                   <span>{t('music.mute')}</span>
                 </label>
+                <button
+                  type="button"
+                  className="track-row__remove"
+                  data-testid={`track-remove-${track.id}`}
+                  aria-label={t('music.removeTrack', { track: label })}
+                  title={t('music.removeTrack', { track: label })}
+                  disabled={score.tracks.length <= 1}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    removeTrack(track.id);
+                  }}
+                >
+                  ×
+                </button>
               </div>
             );
           })}
+          <div className="track-actions">
+            <button
+              type="button"
+              className="btn btn--quiet btn--sm"
+              data-testid="music-add-tonal"
+              disabled={score.tracks.length >= MAX_TRACKS}
+              onClick={() => addTrack('tonal', null)}
+            >
+              + {t('music.addTonal')}
+            </button>
+            <button
+              type="button"
+              className="btn btn--quiet btn--sm"
+              data-testid="music-add-drums"
+              disabled={score.tracks.length >= MAX_TRACKS}
+              onClick={() => addTrack('percussive', null)}
+            >
+              + {t('music.addDrums')}
+            </button>
+          </div>
         </div>
 
         <div className="roll" role="grid" aria-label={t('music.rollLabel')}>
           <div className="roll__labels" aria-hidden="true">
             <div className="roll__label roll__label--section" style={{ height: SECTION_HEIGHT }}>
               <i className="roll__chip" style={{ background: activeColor }} />
-              <span>{t(trackLabelKey(activeTrack))}</span>
+              <span>{labelFor(activeTrack)}</span>
             </div>
             {Array.from({ length: trackRowCount(activeTrack) }, (_, row) => (
               <div key={row} className="roll__label" style={{ height: ROW_HEIGHT }}>
-                {activeTrack === 'drums'
+                {activeTrack.kind === 'percussive'
                   ? t(drumLabelKey(DRUM_PIECES[row]))
                   : pitchName(trackRowPitch(activeTrack, row))}
               </div>
@@ -865,27 +944,27 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
               />
             ))}
 
-            <div className="roll__section" data-testid={`roll-section-${activeTrack}`}>
+            <div className="roll__section" data-testid={`roll-section-${activeTrack.id}`}>
               <div
                 className="roll__band"
                 style={{ height: SECTION_HEIGHT, background: `${activeColor}1a`, borderTopColor: activeColor }}
               />
               {Array.from({ length: trackRowCount(activeTrack) }, (_, row) => {
                 const pitch = trackRowPitch(activeTrack, row);
-                const rowNotes = notesByTrackPitch.get(`${activeTrack}:${pitch}`) ?? [];
+                const rowNotes = notesByTrackPitch.get(`${activeTrack.id}:${pitch}`) ?? [];
                 return (
                   <div key={row} className="roll__row" style={{ height: ROW_HEIGHT }}>
                     {Array.from({ length: steps }, (_, step) => (
                       <div
                         key={step}
                         className="roll__cell"
-                        data-testid={`roll-cell-${activeTrack}-${pitch}-${step}`}
-                        data-track={activeTrack}
+                        data-testid={`roll-cell-${activeTrack.id}-${pitch}-${step}`}
+                        data-track={activeTrack.id}
                         data-pitch={pitch}
                         data-step={step}
                         style={{ width: CELL_WIDTH, height: ROW_HEIGHT }}
                         onPointerDown={(event) => startPaint(event, activeTrack, pitch, step)}
-                        onPointerMove={() => extendPaint(activeTrack, pitch, step)}
+                        onPointerMove={() => extendPaint(activeTrack.id, pitch, step)}
                       />
                     ))}
                     {rowNotes.map((note) => (
@@ -895,7 +974,7 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
                         data-testid="music-note"
                         style={{
                           left: note.start * CELL_WIDTH + 1,
-                          width: Math.max(4, (activeTrack === 'drums' ? 1 : note.length) * CELL_WIDTH - 2),
+                          width: Math.max(4, (activeTrack.kind === 'percussive' ? 1 : note.length) * CELL_WIDTH - 2),
                           height: ROW_HEIGHT - 4,
                           background: activeColor,
                         }}
