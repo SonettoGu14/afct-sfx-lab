@@ -118,20 +118,20 @@ describe('MusicWorkbench', () => {
     expect(screen.getByTestId('music-grid-size').textContent).toContain('8 × 16');
   });
 
-  it('shows all four tracks in one roll with per-track colours', async () => {
+  it('shows only the selected track in the roll and all four colours above', async () => {
     renderWorkbench();
     await waitForNotes(154);
     expect(screen.getByTestId('roll-section-lead')).toBeTruthy();
-    expect(screen.getByTestId('roll-section-bass')).toBeTruthy();
-    expect(screen.getByTestId('roll-section-chords')).toBeTruthy();
-    expect(screen.getByTestId('roll-section-drums')).toBeTruthy();
-    const colours = new Set(screen.getAllByTestId('music-note').map((note) => note.style.background));
+    expect(screen.queryByTestId('roll-section-bass')).toBeNull();
+    const colours = new Set(screen.getAllByTestId('overview-note').map((note) => note.style.background));
     expect(colours.size).toBe(4);
   });
 
-  it('edits the track you click without switching first', async () => {
+  it('shows the track picked from the overview', async () => {
     renderWorkbench();
     await waitForNotes(154);
+    fireEvent.click(screen.getByTestId('overview-lane-bass'));
+    expect(screen.getByTestId('roll-section-bass')).toBeTruthy();
     paintOnce(screen.getByTestId('roll-cell-bass-59-0'));
     await waitForNotes(155);
     expect(screen.getByTestId('track-row-bass').className).toContain('is-active');
@@ -157,6 +157,15 @@ describe('MusicWorkbench', () => {
     await waitForNotes(155);
     const widths = screen.getAllByTestId('music-note').map((note) => note.style.width);
     expect(widths).toContain('110px');
+  });
+
+  it('keeps the tempo when the BPM field is cleared', async () => {
+    renderWorkbench();
+    await waitForNotes(154);
+    const input = screen.getByTestId('music-bpm-number');
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.blur(input);
+    expect(screen.getByTestId('music-duration').textContent).toContain('17.45');
   });
 
   it('switches the time signature and resizes the grid', async () => {
@@ -224,7 +233,6 @@ describe('MusicWorkbench', () => {
     for (const track of ['lead', 'bass', 'chords', 'drums']) {
       expect(screen.getByTestId(`overview-lane-${track}`)).toBeTruthy();
     }
-    expect(screen.getAllByTestId('overview-clip').length).toBeGreaterThan(0);
     expect(screen.getByTestId('music-overview-wave')).toBeTruthy();
     expect(screen.getAllByTestId('overview-tick')).toHaveLength(8);
     expect(screen.getAllByTestId('overview-note')).toHaveLength(154);
@@ -267,7 +275,6 @@ describe('MusicWorkbench', () => {
     fireEvent.click(screen.getByTestId('track-mute-lead'));
     await waitForNotes(128);
     const lead = screen.getByTestId('overview-lane-lead');
-    expect(lead.querySelectorAll('.arrangement__clip.is-muted').length).toBeGreaterThan(0);
     expect(lead.querySelectorAll('.arrangement__note.is-muted').length).toBeGreaterThan(0);
   });
 
@@ -276,7 +283,7 @@ describe('MusicWorkbench', () => {
     await waitForNotes(154);
     fireEvent.click(screen.getByTestId('music-clear'));
     await waitFor(() => {
-      expect(screen.queryAllByTestId('overview-clip')).toHaveLength(0);
+      expect(screen.queryAllByTestId('overview-note')).toHaveLength(0);
     });
     expect(screen.getByTestId('music-overview')).toBeTruthy();
     fireEvent.click(document.querySelector('.arrangement__lanes') as HTMLElement);

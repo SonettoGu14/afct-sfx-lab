@@ -1966,7 +1966,7 @@ button {
   pointer-events: none;
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 880px) {
   .music__body {
     grid-template-columns: 1fr;
   }
@@ -2054,7 +2054,7 @@ button {
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 20px;
+  height: 64px;
   font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: 0.05em;
@@ -2079,35 +2079,26 @@ button {
 
 .arrangement__lane {
   position: relative;
-  height: 20px;
+  height: 64px;
   box-sizing: border-box;
   border-bottom: 1px solid var(--rule);
   background: var(--paper);
 }
 
 .arrangement__lane--wave {
+  height: 32px;
   border-bottom: 0;
   cursor: default;
+}
+
+.arrangement__lane.is-active {
+  background: var(--paper-deep);
 }
 
 .arrangement__wave {
   display: block;
   width: 100%;
-  height: 20px;
-}
-
-.arrangement__clip {
-  position: absolute;
-  top: 3px;
-  bottom: 3px;
-  min-width: 3px;
-  border-radius: 1px;
-  opacity: 0.16;
-  pointer-events: none;
-}
-
-.arrangement__clip.is-muted {
-  opacity: 0.06;
+  height: 32px;
 }
 
 .arrangement__note {
@@ -2115,6 +2106,7 @@ button {
   min-width: 2px;
   border-radius: 1px;
   pointer-events: none;
+  opacity: 0.85;
 }
 
 .arrangement__note.is-muted {

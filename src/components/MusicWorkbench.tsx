@@ -37,7 +37,8 @@ const RENDER_DEBOUNCE_MS = 250;
 const CELL_WIDTH = 14;
 const ROW_HEIGHT = 18;
 const SECTION_HEIGHT = 22;
-const OVERVIEW_ROW_HEIGHT = 20;
+const OVERVIEW_LANE_HEIGHT = 64;
+const OVERVIEW_WAVE_HEIGHT = 32;
 const TRACK_COLORS: Record<TrackId, string> = {
   lead: '#d3401d',
   bass: '#256d7b',
@@ -53,25 +54,13 @@ function trackRowPitch(trackId: TrackId, row: number): number {
   return trackId === 'drums' ? row : TRACK_BASE_PITCH[trackId] + TRACK_PITCH_ROWS - 1 - row;
 }
 
-type OverviewRegion = { start: number; end: number };
 type PaintState = { track: TrackId; pitch: number; anchor: number; end: number };
-
-function mergeNoteRegions(notes: ScoreNote[], track: TrackId): OverviewRegion[] {
-  const regions: OverviewRegion[] = [];
-  for (const note of notes.filter((item) => item.track === track).sort((a, b) => a.start - b.start)) {
-    const end = note.start + (track === 'drums' ? 1 : note.length);
-    const last = regions[regions.length - 1];
-    if (last && note.start <= last.end) last.end = Math.max(last.end, end);
-    else regions.push({ start: note.start, end });
-  }
-  return regions;
-}
 
 function drawOverviewWave(canvas: HTMLCanvasElement | null, samples: Float32Array): void {
   if (!canvas) return;
   const ratio = Math.min(2, typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1);
   const width = Math.max(1, canvas.clientWidth || 640);
-  const height = Math.max(1, canvas.clientHeight || OVERVIEW_ROW_HEIGHT);
+  const height = Math.max(1, canvas.clientHeight || OVERVIEW_WAVE_HEIGHT);
   const pixelWidth = Math.round(width * ratio);
   const pixelHeight = Math.round(height * ratio);
   if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
@@ -183,10 +172,9 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
   const steps = totalSteps(score);
   const stepSeconds = secondsPerStep(score);
   const bpmFill = ((score.bpm - BPM_MIN) / (BPM_MAX - BPM_MIN)) * 100;
-  const rollHeight = TRACK_IDS.reduce(
-    (total, trackId) => total + SECTION_HEIGHT + trackRowCount(trackId) * ROW_HEIGHT,
-    0,
-  );
+  const rollHeight = SECTION_HEIGHT + trackRowCount(activeTrack) * ROW_HEIGHT;
+  const activeColor = TRACK_COLORS[activeTrack];
+  const activeMuted = score.tracks.some((track) => track.id === activeTrack && track.mute);
 
   const notesByTrackPitch = useMemo(() => {
     const map = new Map<string, ScoreNote[]>();
@@ -208,11 +196,6 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
     }
     return map;
   }, [score.notes]);
-  const overviewRegions = useMemo(
-    () => new Map<TrackId, OverviewRegion[]>(TRACK_IDS.map((trackId) => [trackId, mergeNoteRegions(score.notes, trackId)])),
-    [score.notes],
-  );
-
   useEffect(() => {
     renderedRef.current = rendered;
   }, [rendered]);
@@ -385,8 +368,8 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
   };
 
   const commitBpm = (): void => {
-    const value = Number(bpmDraft);
-    if (!Number.isFinite(value)) {
+    const value = Number(bpmDraft.trim());
+    if (bpmDraft.trim() === '' || !Number.isFinite(value)) {
       setBpmDraft(String(score.bpm));
       return;
     }
@@ -728,25 +711,27 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
             ))}
             {TRACK_IDS.map((trackId) => {
               const muted = score.tracks.some((track) => track.id === trackId && track.mute);
+              const rowCount = trackRowCount(trackId);
+              const rowHeight = OVERVIEW_LANE_HEIGHT / rowCount;
               return (
-                <div key={trackId} className="arrangement__lane" data-testid={`overview-lane-${trackId}`}>
-                  {(overviewRegions.get(trackId) ?? []).map((region, index) => (
-                    <i
-                      key={index}
-                      className={muted ? 'arrangement__clip is-muted' : 'arrangement__clip'}
-                      data-testid="overview-clip"
-                      style={{
-                        left: `${(region.start / steps) * 100}%`,
-                        width: `${((region.end - region.start) / steps) * 100}%`,
-                        background: TRACK_COLORS[trackId],
-                      }}
-                    />
-                  ))}
+                <div
+                  key={trackId}
+                  className={
+                    trackId === activeTrack ? 'arrangement__lane is-active' : 'arrangement__lane'
+                  }
+                  data-testid={`overview-lane-${trackId}`}
+                  style={{ height: OVERVIEW_LANE_HEIGHT }}
+                  onClick={() => setActiveTrack(trackId)}
+                >
                   {score.notes
                     .filter((note) => note.track === trackId)
                     .map((note) => {
                       const drums = trackId === 'drums';
                       const noteEnd = Math.min(steps, note.start + (drums ? 1 : note.length));
+                      const row = drums
+                        ? note.pitch
+                        : TRACK_BASE_PITCH[trackId] + TRACK_PITCH_ROWS - 1 - note.pitch;
+                      const rowIndex = Math.min(rowCount - 1, Math.max(0, row));
                       return (
                         <i
                           key={note.id}
@@ -756,8 +741,8 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
                             left: `${(note.start / steps) * 100}%`,
                             width: `calc(${(Math.max(1, noteEnd - note.start) / steps) * 100}% - 1px)`,
                             background: TRACK_COLORS[trackId],
-                            top: drums ? `${(note.pitch / DRUM_PIECES.length) * 100}%` : '25%',
-                            height: drums ? `${100 / DRUM_PIECES.length}%` : '50%',
+                            top: rowIndex * rowHeight + rowHeight * 0.12,
+                            height: Math.max(2, rowHeight * 0.82),
                           }}
                         />
                       );
@@ -854,17 +839,15 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
 
         <div className="roll" role="grid" aria-label={t('music.rollLabel')}>
           <div className="roll__labels" aria-hidden="true">
-            {TRACK_IDS.map((trackId) => (
-              <div key={trackId}>
-                <div className="roll__label roll__label--section" style={{ height: SECTION_HEIGHT }}>
-                  <i className="roll__chip" style={{ background: TRACK_COLORS[trackId] }} />
-                  <span>{t(trackLabelKey(trackId))}</span>
-                </div>
-                {Array.from({ length: trackRowCount(trackId) }, (_, row) => (
-                  <div key={row} className="roll__label" style={{ height: ROW_HEIGHT }}>
-                    {trackId === 'drums' ? t(drumLabelKey(DRUM_PIECES[row])) : pitchName(trackRowPitch(trackId, row))}
-                  </div>
-                ))}
+            <div className="roll__label roll__label--section" style={{ height: SECTION_HEIGHT }}>
+              <i className="roll__chip" style={{ background: activeColor }} />
+              <span>{t(trackLabelKey(activeTrack))}</span>
+            </div>
+            {Array.from({ length: trackRowCount(activeTrack) }, (_, row) => (
+              <div key={row} className="roll__label" style={{ height: ROW_HEIGHT }}>
+                {activeTrack === 'drums'
+                  ? t(drumLabelKey(DRUM_PIECES[row]))
+                  : pitchName(trackRowPitch(activeTrack, row))}
               </div>
             ))}
           </div>
@@ -882,52 +865,46 @@ export default function MusicWorkbench({ active = true }: MusicWorkbenchProps) {
               />
             ))}
 
-            {TRACK_IDS.map((trackId) => {
-              const color = TRACK_COLORS[trackId];
-              const muted = score.tracks.some((track) => track.id === trackId && track.mute);
-              return (
-                <div key={trackId} className="roll__section" data-testid={`roll-section-${trackId}`}>
-                  <div
-                    className="roll__band"
-                    style={{ height: SECTION_HEIGHT, background: `${color}1a`, borderTopColor: color }}
-                  />
-                  {Array.from({ length: trackRowCount(trackId) }, (_, row) => {
-                    const pitch = trackRowPitch(trackId, row);
-                    const rowNotes = notesByTrackPitch.get(`${trackId}:${pitch}`) ?? [];
-                    return (
-                      <div key={row} className="roll__row" style={{ height: ROW_HEIGHT }}>
-                        {Array.from({ length: steps }, (_, step) => (
-                          <div
-                            key={step}
-                            className="roll__cell"
-                            data-testid={`roll-cell-${trackId}-${pitch}-${step}`}
-                            data-track={trackId}
-                            data-pitch={pitch}
-                            data-step={step}
-                            style={{ width: CELL_WIDTH, height: ROW_HEIGHT }}
-                            onPointerDown={(event) => startPaint(event, trackId, pitch, step)}
-                            onPointerMove={() => extendPaint(trackId, pitch, step)}
-                          />
-                        ))}
-                        {rowNotes.map((note) => (
-                          <div
-                            key={note.id}
-                            className={muted ? 'roll__note is-muted' : 'roll__note'}
-                            data-testid="music-note"
-                            style={{
-                              left: note.start * CELL_WIDTH + 1,
-                              width: Math.max(4, (trackId === 'drums' ? 1 : note.length) * CELL_WIDTH - 2),
-                              height: ROW_HEIGHT - 4,
-                              background: color,
-                            }}
-                          />
-                        ))}
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })}
+            <div className="roll__section" data-testid={`roll-section-${activeTrack}`}>
+              <div
+                className="roll__band"
+                style={{ height: SECTION_HEIGHT, background: `${activeColor}1a`, borderTopColor: activeColor }}
+              />
+              {Array.from({ length: trackRowCount(activeTrack) }, (_, row) => {
+                const pitch = trackRowPitch(activeTrack, row);
+                const rowNotes = notesByTrackPitch.get(`${activeTrack}:${pitch}`) ?? [];
+                return (
+                  <div key={row} className="roll__row" style={{ height: ROW_HEIGHT }}>
+                    {Array.from({ length: steps }, (_, step) => (
+                      <div
+                        key={step}
+                        className="roll__cell"
+                        data-testid={`roll-cell-${activeTrack}-${pitch}-${step}`}
+                        data-track={activeTrack}
+                        data-pitch={pitch}
+                        data-step={step}
+                        style={{ width: CELL_WIDTH, height: ROW_HEIGHT }}
+                        onPointerDown={(event) => startPaint(event, activeTrack, pitch, step)}
+                        onPointerMove={() => extendPaint(activeTrack, pitch, step)}
+                      />
+                    ))}
+                    {rowNotes.map((note) => (
+                      <div
+                        key={note.id}
+                        className={activeMuted ? 'roll__note is-muted' : 'roll__note'}
+                        data-testid="music-note"
+                        style={{
+                          left: note.start * CELL_WIDTH + 1,
+                          width: Math.max(4, (activeTrack === 'drums' ? 1 : note.length) * CELL_WIDTH - 2),
+                          height: ROW_HEIGHT - 4,
+                          background: activeColor,
+                        }}
+                      />
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
 
             <div ref={playheadRef} className="roll__playhead" data-testid="music-playhead" />
           </div>

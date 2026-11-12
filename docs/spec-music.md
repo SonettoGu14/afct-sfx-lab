@@ -98,17 +98,19 @@ the two-pole filter rings around 5 kHz and square leads turn into a piercing buz
 
 ## Workbench layout
 
-All four tracks are drawn in one stacked piano roll (lead, bass, chords, drums), each with its
-own colour and a 22 px section header, so the arrangement can be read without switching tracks.
-Clicking a cell selects that track and adds a one-step note; pressing on a cell and dragging
-horizontally draws a longer note in place, so any length can be written without a brush control.
-Clicking an existing note removes it as a whole. Muting a track dims its notes. The roll scrolls
-horizontally and vertically inside a 560 px viewport and never widens the page.
+The workbench is split into an arrangement overview and a piano roll for one track at a time.
+The overview always shows all four tracks (lead, bass, chords, drums), each with its own colour
+in a tall lane that stacks notes by pitch, plus a waveform lane. Clicking a lane selects that
+track for the roll and seeks to that point, so the overview doubles as the track switcher.
+Clicking an existing note in the roll removes it as a whole; clicking an empty cell adds a
+one-step note, and pressing and dragging horizontally draws a longer note in place, so any
+length can be written without a brush control. Muting a track dims its notes. The roll scrolls
+horizontally inside a 560 px viewport and never widens the page.
 
-Above the roll sits the arrangement overview: one lane per track with no pitch rows. Each lane
-draws a dim region band for merged musical activity plus one solid tick per note, positioned and
-sized by the note's grid position, so rhythm and rests stay readable without any pitch rows. The
-demo reads as a bass line, held pads and a drum pattern at a glance. A bar ruler, bar lines
+Above the roll sits the arrangement overview: one lane per track, with notes stacked by pitch
+(24 rows for tonal tracks, five for drums) but no pitch labels. Each note is a solid tick sized
+by its grid length, so melody contour, held chords and drum patterns are all readable at a
+glance. The active track's lane is highlighted and drives which track the roll edits. A bar ruler, bar lines
 and a rendered-waveform lane sit alongside; a playhead sweeps the overview in sync with the roll
 during playback. Clicking anywhere on the overview seeks: while stopped it only moves the
 playheads and sets the next start point, while playing it restarts the loop from that position.
