@@ -401,7 +401,6 @@ export const en = {
   'instruments.bassSaw.label': 'Saw bass',
   'instruments.subBass.label': 'Sub bass',
 
-  'footer.creditPrefix': 'Sound engine and original tool:',
   'footer.creditSuffix': 'rebuilt for AFCT teaching.',
   'footer.note': 'All processing happens in your browser.',
 

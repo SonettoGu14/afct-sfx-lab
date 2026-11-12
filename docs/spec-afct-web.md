@@ -103,17 +103,15 @@ Presets grouped (keeps existing `.preset-rack` / `.preset-strip` / `.preset-butt
 </div>
 ```
 
-Footer (replaces author's socials/avatar; keeps attribution + GPL):
+Footer (keeps the GPL line; provenance attribution lives in the repository README):
 ```tsx
 <footer className="app-footer">
-  <p className="app-footer__credit">
-    {t('footer.creditPrefix')} <a className="app-footer__credit-link" href="https://github.com/mowangblog/game-sfx-generator-web" target="_blank" rel="noreferrer">game-sfx-generator-web</a> · GPL-3.0 · {t('footer.creditSuffix')}
-  </p>
+  <p className="app-footer__credit">GPL-3.0-only · {t('footer.creditSuffix')}</p>
   <p className="app-footer__note">{t('footer.note')}</p>
 </footer>
 ```
 
-New classes theme must style: `.hero-top`, `.hero-brand`, `.hero-brand__mark`, `.hero-brand__text`, `.hero-brand__eyebrow`, `.hero-brand__title`, `.hero-brand__sub`, `.lang-switch`, `.lang-switch__btn` (+ `.is-active`), `.preset-groups`, `.preset-group`, `.preset-group__head`, `.preset-group__label`, `.preset-group__count`, `.app-footer__credit`, `.app-footer__credit-link`, `.app-footer__note`. Remove styling for the old hero-title/hero-eyebrow/hero-meta/hero-actions/avatar/support-link blocks (they disappear from markup).
+New classes theme must style: `.hero-top`, `.hero-brand`, `.hero-brand__mark`, `.hero-brand__text`, `.hero-brand__eyebrow`, `.hero-brand__title`, `.hero-brand__sub`, `.lang-switch`, `.lang-switch__btn` (+ `.is-active`), `.preset-groups`, `.preset-group`, `.preset-group__head`, `.preset-group__label`, `.preset-group__count`, `.app-footer__credit`, `.app-footer__note`. Remove styling for the old hero-title/hero-eyebrow/hero-meta/hero-actions/avatar/support-link blocks (they disappear from markup).
 
 ## 5. Theme direction (theme owner)
 

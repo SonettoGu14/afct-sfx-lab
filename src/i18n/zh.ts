@@ -403,7 +403,6 @@ export const zh: Record<TranslationKey, string> = {
   'instruments.bassSaw.label': '锯齿贝斯',
   'instruments.subBass.label': '超低贝斯',
 
-  'footer.creditPrefix': '音效引擎与原始工具：',
   'footer.creditSuffix': '为 AFCT 教学重建。',
   'footer.note': '所有处理都在浏览器内完成。',
 

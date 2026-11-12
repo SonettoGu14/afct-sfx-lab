@@ -4,7 +4,6 @@ import MusicWorkbench from './components/MusicWorkbench';
 import { useI18n } from './i18n';
 
 const MARK_ASSET_PATH = `${import.meta.env.BASE_URL}afct-mark.svg`;
-const SOURCE_REPO_URL = 'https://github.com/mowangblog/game-sfx-generator-web';
 const MODE_STORAGE_KEY = 'afct-sfx-lab:mode-v1';
 
 type WorkbenchMode = 'sfx' | 'music';
@@ -100,13 +99,7 @@ function App() {
       </main>
 
       <footer className="colophon">
-        <p className="colophon__credit">
-          {t('footer.creditPrefix')}{' '}
-          <a className="colophon__link" href={SOURCE_REPO_URL} target="_blank" rel="noreferrer">
-            game-sfx-generator-web
-          </a>{' '}
-          · GPL-3.0 · {t('footer.creditSuffix')}
-        </p>
+        <p className="colophon__credit">GPL-3.0-only · {t('footer.creditSuffix')}</p>
         <p className="colophon__note">{t('footer.note')}</p>
       </footer>
     </div>
