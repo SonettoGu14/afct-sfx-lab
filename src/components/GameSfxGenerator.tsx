@@ -29,7 +29,7 @@ import { PRESET_CATEGORIES, isFootstepPresetId, isPresetId } from '../lib/preset
 import { useI18n, type Translate, type TranslationKey } from '../i18n';
 
 const HISTORY_STORAGE_KEY = 'afct-sfx-lab:history-v1';
-const SAMPLE_RATE_OPTIONS: SfxSampleRate[] = [44100, 48000, 22050, 11025, 8000];
+const SAMPLE_RATE_OPTIONS: SfxSampleRate[] = [48000, 44100, 22050, 11025, 8000];
 const BIT_DEPTH_OPTIONS: SfxBitDepth[] = [16, 8];
 const DEFAULT_EXPANDED_SECTIONS = {
   effects: false,
@@ -160,7 +160,7 @@ const FOOTSTEP_CONTROL_FIELDS: FootstepSliderKey[] = [
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null; }
-function isSampleRate(value: unknown): value is SfxSampleRate { return value === 44100 || value === 22050 || value === 11025 || value === 8000; }
+function isSampleRate(value: unknown): value is SfxSampleRate { return value === 48000 || value === 44100 || value === 22050 || value === 11025 || value === 8000; }
 function isBitDepth(value: unknown): value is SfxBitDepth { return value === 16 || value === 8; }
 function isWaveform(value: unknown): value is SfxWaveform { return value === 'square' || value === 'sawtooth' || value === 'sine' || value === 'noise'; }
 function toBase64Url(json: string): string { return btoa(unescape(encodeURIComponent(json))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }

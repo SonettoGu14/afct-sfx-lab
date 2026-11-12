@@ -229,6 +229,16 @@ describe('GameSfxGenerator', () => {
     expect(screen.getAllByText(/8kHz/).length).toBeGreaterThan(0);
   });
 
+  it('lists the sample rates from highest to lowest while keeping 44.1k as the default', () => {
+    renderWorkbench();
+
+    const group = screen.getByRole('group', { name: 'Sample rate' });
+    const labels = within(group).getAllByRole('button').map((button) => button.textContent);
+
+    expect(labels).toEqual(['48k', '44.1k', '22.05k', '11.025k', '8k']);
+    expect(screen.getByRole('button', { name: '44.1k' }).getAttribute('aria-pressed')).toBe('true');
+  });
+
   it('opens export menus for the current snapshot and bulk history export', async () => {
     const user = userEvent.setup();
     renderWorkbench();
